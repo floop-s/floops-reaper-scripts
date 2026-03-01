@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="b7f4b93c1f1d3b3611a52136d3a4650721d36316">
+<index version="1" name="Floop's Reaper Scripts" commit="0a5a426824b366aaf3f3a3fbf344410628e71a81">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -42,6 +42,12 @@
       <version name="1.1.0" author="Floop-s" time="2026-02-01T11:25:30Z">
         <changelog><![CDATA[Optimized MPC Layout, Smart Scaling, UI Cleanup]]></changelog>
         <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/f67a8728ff9c95e0d4832b158a268a6ff6915c51/effects/floop-master-control/floop-master-control.jsfx</source>
+      </version>
+      <version name="1.2.0" author="Floop-s" time="2026-03-01T17:15:54Z">
+        <changelog><![CDATA[Fix: 'Solo Side' now correctly mutes Mid (L=Side, R=-Side).
+New: Continuous Spectrum Smoothing slider (Right-Click for 1/3, 1/12, 1/24 presets).
+Tweak: Increased 'Slow' spectrum averaging time to ~5000ms.]]></changelog>
+        <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/0a5a426824b366aaf3f3a3fbf344410628e71a81/effects/floop-master-control/floop-master-control.jsfx</source>
       </version>
     </reapack>
   </category>
