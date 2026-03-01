@@ -1,9 +1,11 @@
 desc:Floop Master Control
-// @version 1.1.0
+// @version 1.2.0
 // @author Floop-s
 // @license GPL-3.0
 // @changelog
-//   Optimized MPC Layout, Smart Scaling, UI Cleanup
+//   Fix: 'Solo Side' now correctly mutes Mid (L=Side, R=-Side).
+//   New: Continuous Spectrum Smoothing slider (Right-Click for 1/3, 1/12, 1/24 presets).
+//   Tweak: Increased 'Slow' spectrum averaging time to ~5000ms.
 // @about
 //   Integrated master monitoring and analysis tool for REAPER.
 //
@@ -29,7 +31,7 @@ slider6:lufs_s_limit_db=-14<-36,0,0.1>LUFS-S Target
 slider7:spec_avg_mode=0<0,2,1{Fast,Slow,Infinite}>Spectrum AVG
 slider8:spec_slope_db=4.5<0,6,0.1>Spectrum Slope (dB/oct)
 slider9:spec_freeze=0<0,1,1>Spectrum Freeze
-slider11:spec_smooth_mode=0<0,2,1{1/3 Oct,1/12 Oct,1/24 Oct}>Smoothing
+slider11:slider11=0<0,2,0.01>Smoothing (Octave)
 slider12:spec_mode_ms=0<0,1,1{Stereo,Mid/Side}>Spectrum Mode
 slider13:phase_view_mode=0<0,1,1{Bar,Multi}>Phase View
 
@@ -100,9 +102,7 @@ i = 0;
 loop(fft_size,
   // Hann Window
   win_buf[i] = 0.5 * (1 - cos(2*$pi*i/(fft_size-1)));
-  // Adjust for overlap gain compensation: 
-  // For 75% overlap (factor 4), energy increases. 
-  // Simple energy normalization happens in @gfx usually, but window sum helps there.
+  // Calculate window sum for normalization (75% overlap factor)
   win_sum += win_buf[i];
   i += 1;
 );
@@ -255,12 +255,19 @@ tp_limit_db =
   tp_limit_mode == 0 ? -1 :
   tp_limit_mode == 1 ? -0.3 : 0;
 
-spec_smooth_a = spec_avg_mode == 0 ? 0.75 : spec_avg_mode == 1 ? 0.92 : 0.0;
+spec_smooth_a = spec_avg_mode == 0 ? 0.75 : spec_avg_mode == 1 ? 0.995 : 0.0;
 spec_smooth_b = 1 - spec_smooth_a;
 spec_peak_decay = spec_avg_mode == 0 ? 0.985 : spec_avg_mode == 1 ? 0.995 : 1.0;
 spec_tilt_db_per_oct = slider8;
 
-oct_smooth = spec_smooth_mode == 0 ? pow(2, 1/6) : spec_smooth_mode == 1 ? pow(2, 1/24) : pow(2, 1/48);
+// Calculate smoothing bandwidth based on slider11 (0.0=1/3 oct -> 2.0=1/24 oct)
+_disp_oct = slider11 <= 1 ? (1/3 - (slider11 * (1/3 - 1/12))) : (1/12 - ((slider11-1) * (1/12 - 1/24)));
+
+// Target width factor for FFT (pow(2, bandwidth/2))
+_target_oct = pow(2, _disp_oct * 0.5);
+
+// Smooth transition (inertia)
+oct_smooth = (oct_smooth == 0) ? _target_oct : (oct_smooth * 0.9 + _target_oct * 0.1);
 
 ui_dim_active ? gain *= 0.1;
 
@@ -561,7 +568,7 @@ scope_filled < scope_size ? scope_filled += 1;
 out_l = l;
 out_r = r;
 ui_monitor_mode == 1 ? ( m = (out_l + out_r) * 0.5; out_l = m; out_r = m; );
-ui_monitor_mode == 2 ? ( out_l = side; out_r = side; );
+ui_monitor_mode == 2 ? ( out_l = side; out_r = -side; );
 
 ui_low_end_only ? (
   lp_x = out_l;
@@ -1732,20 +1739,68 @@ Button(btn_x_s, btn_y_s, btn_w_s, btn_h_s, "F", spec_freeze) ? (
   slider_automate(slider9);
 );
 
-// Smoothing Selector
+// Smoothing Selector (Slider + Right Click for presets)
 btn_w_sm = compact_mode ? max(24, floor(30 * scale)) : floor(50 * scale);
 btn_x_sm = btn_x_s - btn_w_sm - floor(6 * scale);
-s11_int = floor(spec_smooth_mode + 0.5);
-sm_lbl = s11_int == 0 ? "1/3" : s11_int == 1 ? "1/12" : "1/24";
-// In compact mode, shorten
-compact_mode ? (
-  sm_lbl = s11_int == 0 ? "1/3" : s11_int == 1 ? "12" : "24";
+
+// Smoothing Selector (Slider + Right Click for presets)
+btn_w_sm = compact_mode ? max(24, floor(30 * scale)) : floor(50 * scale);
+btn_x_sm = btn_x_s - btn_w_sm - floor(6 * scale);
+
+// Left Click: Continuous Slider (0.0 - 1.0 mapped to 0..2)
+mouse_cap == 1 && mouse_x >= btn_x_sm && mouse_x < btn_x_sm + btn_w_sm && mouse_y >= btn_y_s && mouse_y < btn_y_s + btn_h_s ? (
+   val = (mouse_x - btn_x_sm) / btn_w_sm;
+   val = Clamp(val, 0, 1);
+   slider11 = val * 2.0; 
+   slider_automate(slider11);
 );
 
-Button(btn_x_sm, btn_y_s, btn_w_sm, btn_h_s, sm_lbl, 0) ? (
-  spec_smooth_mode = (s11_int + 1) % 3;
-  slider_automate(spec_smooth_mode);
+// Right Click: Toggle Presets (1/3 -> 1/12 -> 1/24)
+mouse_cap == 2 && last_mouse_cap == 0 && mouse_x >= btn_x_sm && mouse_x < btn_x_sm + btn_w_sm && mouse_y >= btn_y_s && mouse_y < btn_y_s + btn_h_s ? (
+    // Snap to nearest preset then cycle
+    abs(slider11 - 0.0) < 0.2 ? slider11 = 1.0 : // 1/3 -> 1/12
+    abs(slider11 - 1.0) < 0.2 ? slider11 = 2.0 : // 1/12 -> 1/24
+    abs(slider11 - 2.0) < 0.2 ? slider11 = 0.0 : // 1/24 -> 1/3
+    slider11 = 1.0; // default to middle if weird value
+    slider_automate(slider11);
 );
+
+// Draw Slider Background
+SetColor(0.2, 0.2, 0.22, 1);
+gfx_rect(btn_x_sm, btn_y_s, btn_w_sm, btn_h_s);
+SetColor(0.3, 0.3, 0.35, 1);
+gfx_rect(btn_x_sm+1, btn_y_s+1, btn_w_sm-2, btn_h_s-2);
+
+// Draw Fill
+fill_norm = slider11 / 2.0; 
+fill_w = fill_norm * btn_w_sm;
+SetColor(0.15, 0.55, 0.35, 0.9);
+gfx_rect(btn_x_sm+1, btn_y_s+1, max(0, fill_w-2), btn_h_s-2);
+
+// Draw Label
+gfx_setfont(1, "Arial", f_sz_small);
+SetColor(1, 1, 1, 0.9);
+
+// Calculate exact 1/X value for display
+// 0=1/3, 1=1/12, 2=1/24. 
+// Linear interpolation for display text
+disp_oct = slider11 <= 1 ? (1/3 - (slider11 * (1/3 - 1/12))) : (1/12 - ((slider11-1) * (1/12 - 1/24)));
+disp_denom = 1/disp_oct;
+
+sprintf(#sm_str, "1/%.0f", disp_denom);
+// Compact check
+compact_mode ? (
+  sprintf(#sm_str, "%.0f", disp_denom);
+);
+
+DrawTextCent(btn_x_sm, btn_y_s, btn_w_sm, btn_h_s, #sm_str);
+
+// Update oct_smooth for FFT logic
+// Smooth transition to avoid glitching
+target_oct = pow(2, disp_oct * 0.5); // Width factor is half bandwidth
+oct_smooth = oct_smooth * 0.8 + target_oct * 0.2; // Smooth out changes over frames to reduce flicker
+
+
 
 // Averaging Selector (AVG)
 btn_w_avg = compact_mode ? max(24, floor(30 * scale)) : floor(40 * scale);

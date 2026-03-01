@@ -1,5 +1,7 @@
 # Floop Master Control
 
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.2.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+
 **Integrated master monitoring and analysis for REAPER.**
 
 
@@ -12,15 +14,15 @@ It includes True Peak limiting/metering, LUFS metering, Spectrum Analysis, and P
 
 <p align="center"> 
  <br> 
- <a href="../../assets/floop-master-control-s1-v1.0.0.png" target="_blank"> 
-   <img src="../../assets/floop-master-control-s1-v1.0.0.png" width="350" alt="click to zoom in"> 
+ <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s1-v1.0.0.png" target="_blank"> 
+   <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s1-v1.0.0.png" width="350" alt="click to zoom in"> 
  </a> 
  <br> 
 </p>
 <details>
   <summary>📸 Click to view more screenshots</summary>
   <p align="center">
-  <a href="../../assets/floop-master-control-s2-v1.0.0.png" target="_blank"><img src="../../assets/floop-master-control-s2-v1.0.0.png" height="350"></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="../../assets/floop-master-control-s3-v1.0.0.png" target="_blank"><img src="../../assets/floop-master-control-s3-v1.0.0.png" height="350"></a> 
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s2-v1.0.0.png" target="_blank"><img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s2-v1.0.0.png" height="350"></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s3-v1.0.0.png" target="_blank"><img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s3-v1.0.0.png" height="350"></a> 
   </p>
 </details>
 
@@ -73,6 +75,9 @@ It includes True Peak limiting/metering, LUFS metering, Spectrum Analysis, and P
 *   **Config ("C" Button)**: Opens configuration sliders (Monitor Gain, TP Limit, LUFS Target, Spectrum settings).
 *   **Spectrum Analyzer**:
     *   **FREEZE**: Pauses display.
+    *   **Smoothing Slider**:
+        *   **Left-Click Drag**: Continuous adjustment (1/3 to 1/24 octave).
+        *   **Right-Click**: Cycles through presets (1/3, 1/12, 1/24).
     *   **Hover**: Shows Hz and dB.
     *   **Click**: Resets peak hold.
 *   **Oscilloscope**:
@@ -99,6 +104,11 @@ To see the meters directly in the mixer without opening the window:
 *   **High CPU**: The script is optimized, but high FFT sizes can be demanding. Reduce spectrum resolution if needed via sliders.
 
 ## Changelog
+
+### v1.2.0
+*   **Side Solo Fix**: Now correctly mutes Mid channel (L=Side, R=-Side) instead of playing phantom center mono.
+*   **Progressive Smoothing**: Converted Smoothing control to a continuous slider (1/3 to 1/24 oct). Includes right-click preset cycling.
+*   **Mastering Slow Mode**: Increased 'Slow' spectrum integration time to ~5000ms for stable tonal balance analysis.
 
 ### v1.1.0
 *   **Core UI Refactoring**: Rewrote rendering engine for native scalability across 4K monitors and laptops (tested on 27" and 15").
