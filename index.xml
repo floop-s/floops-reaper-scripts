@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="0a5a426824b366aaf3f3a3fbf344410628e71a81">
+<index version="1" name="Floop's Reaper Scripts" commit="87cb0b45600d794e81f22579ab12439d11052409">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -126,6 +126,32 @@ Tweak: Increased 'Slow' spectrum averaging time to ~5000ms.]]></changelog>
         <changelog><![CDATA[- Fixed cumulative volume reduction when sibilant segments overlap.
 - Fixed incorrect envelope point values by respecting track envelope scaling mode (Fader/Amplitude).]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/b7f4b93c1f1d3b3611a52136d3a4650721d36316/scripts/floop-ess-hunter/floop-ess-hunter.lua</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="scripts/floop-groove-a-thor">
+    <reapack name="floop-groove-a-thor.lua" type="script" desc="Floop Groove-A-Thor">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Floop Groove-A-Thor\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\b Groove Extraction and Injection tool for REAPER.}\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Extract the rhythmic DNA (timing and velocity) from any Audio or MIDI source and apply it to any target item (Audio or MIDI) with precision.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\b Key Features:}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Groove Extraction from Audio (transients) or MIDI\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Groove Injection with adjustable Timing, Velocity, and Grid Attraction\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Advanced Visualizer with LOCKED (Groove) and LIVE (Selection) modes\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Procedural Groove Generator (Swing, Push/Pull)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Groove Library with Bank management\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Non-destructive workflow with Undo support\sa180\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Floop-s" time="2026-03-14T08:18:44Z">
+        <changelog><![CDATA[+ Initial Release]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/87cb0b45600d794e81f22579ab12439d11052409/scripts/floop-groove-a-thor/floop-groove-a-thor.lua</source>
       </version>
     </reapack>
   </category>
