@@ -1,6 +1,6 @@
 # Floop Groove-A-Thor
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.0.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.0.1-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 **Groove Extraction and Injection tool for REAPER.**
 
@@ -152,6 +152,9 @@ Create synthetic swing patterns from scratch without needing a source file.
 
 
 ## Changelog
+
+### v1.0.1
+* Bugfix: Fixed an issue where applying a groove to an audio item would inadvertently shift the start and end boundaries of the loop. Loop edges are now properly pinned and preserved.
 
 ### v1.0.0
 * Initial Release.

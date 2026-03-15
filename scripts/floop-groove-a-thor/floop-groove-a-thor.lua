@@ -1,5 +1,5 @@
 -- @description Floop Groove-A-Thor
--- @version 1.0.0
+-- @version 1.0.1
 -- @author Floop-s
 -- @license GPL-3.0
 -- @about
@@ -18,7 +18,7 @@
 --   * Non-destructive workflow with Undo support
 --
 -- @changelog
---   + Initial Release
+--   + Bugfix: Fixed audio loop start/end marker shifting when applying groove, ensuring loop boundary stability.
 -- @provides
 --   [main] floop-groove-a-thor.lua
 
@@ -1695,8 +1695,45 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
         local transients = self:detectTransients(take)
         for _, t in ipairs(transients) do
             local pos_in_item = t.time - item_pos
-            reaper.SetTakeStretchMarker(take, -1, pos_in_item, pos_in_item)
+            local src_pos = start_offs + (pos_in_item * play_rate)
+            reaper.SetTakeStretchMarker(take, -1, pos_in_item, src_pos)
         end
+        GrooveCache:clear(take)
+    end
+
+    -- Ensure Start/End Markers for Loop Stability
+    local has_start_marker = false
+    local has_end_marker = false
+    num_markers = reaper.GetTakeNumStretchMarkers(take)
+
+    if num_markers > 0 then
+        local _, first_pos, _ = reaper.GetTakeStretchMarker(take, 0)
+        if math.abs(first_pos) < 0.001 then has_start_marker = true end
+
+        local _, last_pos, _ = reaper.GetTakeStretchMarker(take, num_markers - 1)
+        if math.abs(last_pos - item_len) < 0.001 then has_end_marker = true end
+    end
+
+    local markers_updated = false
+    if not has_start_marker then
+        reaper.SetTakeStretchMarker(take, -1, 0.0, start_offs)
+        markers_updated = true
+    end
+
+    if not has_end_marker then
+        local end_src_pos = start_offs + (item_len * play_rate)
+        if num_markers > 0 then
+            local _, last_pos, last_src = reaper.GetTakeStretchMarker(take, num_markers - 1)
+            if last_pos < item_len then
+                end_src_pos = last_src + (item_len - last_pos) * play_rate
+            end
+        end
+        reaper.SetTakeStretchMarker(take, -1, item_len, end_src_pos)
+        markers_updated = true
+    end
+
+    if markers_updated then
+        reaper.UpdateItemInProject(item)
         GrooveCache:clear(take)
     end
 
@@ -1731,9 +1768,16 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
     num_markers = reaper.GetTakeNumStretchMarkers(take)
     local markers = {}
 
+    if DEBUG_MODE then
+        dbg("Stretch Markers Before Apply:")
+    end
+
     for i = 0, num_markers - 1 do
         local idx, pos, src_pos = reaper.GetTakeStretchMarker(take, i)
         if idx ~= -1 then
+            if DEBUG_MODE then
+                dbg(string.format("  [%d] pos: %.4f, src: %.4f", i, pos, src_pos))
+            end
             table.insert(markers, {
                 index = i,
                 orig_pos = pos,
@@ -1749,6 +1793,7 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
     if DEBUG_MODE then ClearDebugMarkers() end
 
     local marker_idx_offset = 0
+    local last_new_pos = -0.001
 
     for i, m in ipairs(markers) do
         local current_abs_time = item_pos + m.orig_pos
@@ -1770,7 +1815,15 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
 
         local time_dist = math.abs(current_abs_time - last_abs_time)
 
-        if math.abs(query_qn - last_query_qn) < 0.001 and time_dist < lockout_sec then
+        -- Pinned edge markers
+    
+        if m.orig_pos < 0.030 or math.abs(m.orig_pos - item_len) < 0.030 then
+            delta = 0
+            is_grouped = true
+            gp = nil
+            last_query_qn = query_qn
+            last_delta = 0
+        elseif math.abs(query_qn - last_query_qn) < 0.001 and time_dist < lockout_sec then
             delta = last_delta
             is_grouped = true
             if DEBUG_MODE then
@@ -1818,7 +1871,22 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
             local strength = self.application.timing_amount * self.application.global_intensity
             local new_pos = m.orig_pos + (delta * strength)
 
+            
+            if not is_grouped or delta ~= 0 then
+                local min_pos = last_new_pos + 0.001
+                local max_pos = item_len - 0.001
+
+                if i < #markers then
+                    
+                    max_pos = markers[i + 1].orig_pos - 0.001
+                end
+
+                if new_pos < min_pos then new_pos = min_pos end
+                if new_pos > max_pos then new_pos = max_pos end
+            end
+
             reaper.SetTakeStretchMarker(take, m.index + marker_idx_offset, new_pos, m.src_pos)
+            last_new_pos = new_pos
 
             if not is_grouped then
                 local protect_time = 0.040
@@ -1843,6 +1911,7 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
                     local anchor_pos = new_pos + protect_time
                     reaper.SetTakeStretchMarker(take, -1, anchor_pos, anchor_src)
                     marker_idx_offset = marker_idx_offset + 1
+                    last_new_pos = anchor_pos
                 end
             end
 
@@ -2106,7 +2175,7 @@ local function DrawMainToolbar()
         local has_selection = reaper.GetSelectedMediaItem(0, 0) ~= nil
         local has_groove = GrooveCore:getCurrentGroove() ~= nil
 
-        -- Add horizontal padding to buttons
+        
         reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_FramePadding(), 10, 0)
 
         if reaper.ImGui_Button(ctx, "Extract from Sel", 0, btn_h) then
@@ -3611,7 +3680,11 @@ end
 local function Init()
     local dbg = reaper.GetExtState(EXT_NS, "debug_mode")
     if dbg == "1" then State.settings.debug_mode = true end
-    DEBUG_MODE = State.settings.debug_mode
+    
+    -- Sync global DEBUG_MODE
+    if DEBUG_MODE then State.settings.debug_mode = true end
+    if State.settings.debug_mode then DEBUG_MODE = true end
+
     GrooveCore:loadGroovesFromDisk()
     reaper.defer(Loop)
 end
