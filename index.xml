@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="87cb0b45600d794e81f22579ab12439d11052409">
+<index version="1" name="Floop's Reaper Scripts" commit="c57bc4141e6e5c408608c54a2fe6e7aa30a74277">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -152,6 +152,10 @@ Tweak: Increased 'Slow' spectrum averaging time to ~5000ms.]]></changelog>
       <version name="1.0.0" author="Floop-s" time="2026-03-14T08:18:44Z">
         <changelog><![CDATA[+ Initial Release]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/87cb0b45600d794e81f22579ab12439d11052409/scripts/floop-groove-a-thor/floop-groove-a-thor.lua</source>
+      </version>
+      <version name="1.0.1" author="Floop-s" time="2026-03-15T09:45:39Z">
+        <changelog><![CDATA[+ Bugfix: Fixed audio loop start/end marker shifting when applying groove, ensuring loop boundary stability.]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/c57bc4141e6e5c408608c54a2fe6e7aa30a74277/scripts/floop-groove-a-thor/floop-groove-a-thor.lua</source>
       </version>
     </reapack>
   </category>
