@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="c57bc4141e6e5c408608c54a2fe6e7aa30a74277">
+<index version="1" name="Floop's Reaper Scripts" commit="c83e269330092eb3a01d19dacd92a9b63cf20155">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -156,6 +156,32 @@ Tweak: Increased 'Slow' spectrum averaging time to ~5000ms.]]></changelog>
       <version name="1.0.1" author="Floop-s" time="2026-03-15T09:45:39Z">
         <changelog><![CDATA[+ Bugfix: Fixed audio loop start/end marker shifting when applying groove, ensuring loop boundary stability.]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/c57bc4141e6e5c408608c54a2fe6e7aa30a74277/scripts/floop-groove-a-thor/floop-groove-a-thor.lua</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="scripts/floop-hunter-framework">
+    <reapack name="floop-hunter-framework.lua" type="script" desc="Floop Hunter Framework">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Floop Hunter Framework\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Artifact detection and gain-reduction helper for REAPER (Ess / Plosive / Breath). Requires ReaImGui.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Floop-s" time="2026-04-02T13:13:43Z">
+        <source main="main" file="Floop Hunter Framework/floop-hunter-framework.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/floop-hunter-framework.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_cache.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/floop_cache.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_dsp.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/floop_dsp.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_engine.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/floop_engine.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_imgui.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/floop_imgui.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_logger.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/floop_logger.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_ui.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/floop_ui.lua</source>
+        <source file="Floop Hunter Framework/modules/hunters/hunter_breath.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/hunters/hunter_breath.lua</source>
+        <source file="Floop Hunter Framework/modules/hunters/hunter_ess.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/hunters/hunter_ess.lua</source>
+        <source file="Floop Hunter Framework/modules/hunters/hunter_plosive.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/hunters/hunter_plosive.lua</source>
       </version>
     </reapack>
   </category>
@@ -372,6 +398,11 @@ Animated floating UI with debounced search.]]></changelog>
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Bug reports and feedback are welcome, but responses may be limited.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Tools are tested only on systems I have direct access to.\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 This project is maintained in my spare time.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If these tools save you time, a coffee is always appreciated. \u9749 ?\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\field{\*\fldinst{HYPERLINK "https://ko-fi.com/floopsreaperscripts"}}{\fldrslt{\ul
+{\cf1 [image: https://img.shields.io/badge/Ko--fi-Support%20Development-orange?style=flat-square&logo=ko-fi]\cf0}
+}}}
+\par}
 {\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 License\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 All contents of this repository are released under the {\b GNU General Public License v3.0 (GPL-3.0)}.\par}
