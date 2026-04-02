@@ -85,7 +85,15 @@ All scripts and effects are provided **as-is**.
 
 This project is maintained in my spare time.
 
+If these tools save you time, a coffee is always appreciated. ☕
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-orange?style=flat-square&logo=ko-fi)](https://ko-fi.com/floopsreaperscripts)
+
 ---
+
+
+
+
 
 ## License
 

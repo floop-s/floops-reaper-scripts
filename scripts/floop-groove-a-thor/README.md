@@ -2,7 +2,7 @@
 
 ![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.0.1-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
-**Groove Extraction and Injection tool for REAPER.**
+**Transfer rhythmic feel between any Audio or MIDI items in REAPER extract groove, inject swing, generate patterns from scratch.**
 
 ---
 
@@ -86,7 +86,7 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 
 2.  **Install the Script**:
     *   Download the script file `floop-groove-a-thor.lua`.
-    *   Copy to the REAPER resource path folder. 
+    *   Copy to the REAPER resource path folder (REAPER > Options > Show REAPER resource path > Scripts). 
 
 3.  **Load the Action**:
     *   Open the Actions List (`?` shortcut).
@@ -96,6 +96,7 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 ---
 
 ## Usage
+The workflow is divided into three main phases: extract, organize, apply.
 
 ### 1. Groove Extraction
 Analyze and capture the rhythmic feel from your tracks.
@@ -149,7 +150,17 @@ Create synthetic swing patterns from scratch without needing a source file.
 *   **Multi-Select**: `Ctrl+Click` (Cmd+Click) to select multiple grooves for deletion.
 *   **Reset Cache**: Force re-analysis if you manually edited stretch markers or item bounds.
 
+---
 
+## ⚠️ Limitations & Expectations
+
+Groove-A-Thor is a powerful tool for transferring rhythmic feel, but it operates on algorithmic analysis rather than human perception. Please keep the following in mind:
+
+*   **Audio Extraction**: Transient detection relies on clear, defined peaks (like drums or percussion). Complex, polyphonic, or heavily washed-out audio (e.g., full mixes, pads) will not yield clean groove patterns.
+*   **Extreme Quantization**: Applying 100% strength with very tight Match Windows on highly unquantized live performances might result in unnatural "stuttering" or skipped notes if the grid and the performance are too far apart.
+*   **Best Practice**: Always listen critically. Groove transfer is as much an art as it is a science. Use the `Strength` slider to blend the extracted feel with the original timing, rather than forcing a rigid 100% match.
+
+---
 
 ## Changelog
 
@@ -158,6 +169,13 @@ Create synthetic swing patterns from scratch without needing a source file.
 
 ### v1.0.0
 * Initial Release.
+---
+
+## Support Development
+
+If you find my scripts useful and want to support their development, you can buy me a coffee on Ko-fi:
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-orange?style=flat-square&logo=ko-fi)](https://ko-fi.com/floopsreaperscripts)
 
 ---
 
@@ -173,8 +191,3 @@ Project home: [https://www.floratarantino.com/floop-reaper-scripts/](https://www
 Licensed under the **GNU General Public License v3.0 (GPL-3.0)**  
 See `LICENSE.txt` in the repository for details.
 
-## Support Development
-
-If you find my scripts useful and want to support their development, you can buy me a coffee on Ko-fi:
-
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-orange?style=flat-square&logo=ko-fi)](https://ko-fi.com/floopsreaperscripts)
