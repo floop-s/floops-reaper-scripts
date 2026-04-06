@@ -1,8 +1,12 @@
-# Sheet Reader v2.1.0 - PDF & Image Viewer
+# Sheet Reader v2.2.0 - PDF & Image Viewer
+
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-2.2.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 **Sheet Reader** is a Reaper script that allows you to load and view PDF and image files directly inside Reaper. The script utilizes Poppler to convert PDF files into images for display in the GUI. Users can zoom in and out using the buttons or "Ctrl + Mouse Wheel".
 
 ## ⚠️ WINDOWS ONLY
+
+![Platform](https://img.shields.io/badge/Supported-Windows-yellow) ![Platform](https://img.shields.io/badge/macOS%20%2F%20Linux-Unsupported-red)
 
 **This script is developed exclusively for Windows.**
 It relies on PowerShell and Windows Script Host for dependency management and process handling. It will **not** function on macOS or Linux.
@@ -11,8 +15,8 @@ It relies on PowerShell and Windows Script Host for dependency management and pr
 
 <p align="center"> 
   <br> 
-  <a href="../../assets/floop-sheet-reader-s1-v2.1.0.png" target="_blank"> 
-    <img src="../../assets/floop-sheet-reader-s1-v2.1.0.png" width="450" style="border: 1px solid #e5ef2aff;" alt="click to zoom in"> 
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-sheet-reader-s1-v2.1.0.png" target="_blank"> 
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-sheet-reader-s1-v2.1.0.png" width="450" style="border: 1px solid #e5ef2aff;" alt="click to zoom in"> 
   </a> 
   <br> 
 </p>
@@ -88,7 +92,14 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 
 ## Changelog
 
-### Version 2.1 (2026-01-07)
+### Version 2.2.0 (2026-04-06)
+- **Performance**: Completely resolved UI freezing during Poppler installation using an asynchronous VBS/PowerShell pipeline.
+- **Stability**: Re-written image caching system to fix memory leaks and prevent "invalid texture" errors caused by garbage collection.
+- **UX**: "Select PDF/Image" now correctly remembers the last accessed directory across sessions.
+- **Security**: Scoped all global functions to local for script safety and better performance.
+- **UI**: Polished About/Credits modal.
+
+### Version 2.1.0 (2026-01-07)
 - **About / Credits**: Added '?' button with Poppler attribution and GitHub link.
 - **UI**: Restored 'Clear Cache' button to main UI for faster access.
 - **Fixes**: Corrected tooltip contrast for better readability.
@@ -109,6 +120,13 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 
 - **Poppler**: PDF rendering library by Derek Schuff (https://poppler.freedesktop.org/).
 - **Windows Binaries**: Sourced from oschwartz10612/poppler-windows (https://github.com/oschwartz10612/poppler-windows).
+
+## Support
+
+All my tools are free and open-source.
+If they help your workflow, consider supporting the project on Ko-fi
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-orange?style=flat-square&logo=ko-fi)](https://ko-fi.com/floopsreaperscripts)
 
 ## Author
 

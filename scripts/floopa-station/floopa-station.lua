@@ -1,11 +1,10 @@
 -- Floopa Station
 -- @description Floopa Station: five-track live looping station.
--- @version 1.1.1
+-- @version 1.1.2
 -- @author Floop-s
 -- @license GPL-3.0
 -- @changelog
---   v1.1.1
---   - Auto-Loop length and recording position fixed (timeline-agnostic behavior).
+--   - Added "Clean" function: removes empty MIDI/Audio items (< -50dB) and prunes unused lanes on Floopa tracks.
 -- @about
 --   Five-track live looping station for REAPER.
 --
@@ -1110,6 +1109,135 @@ local goToMeasure, setBPM, setLoop, saveLoopAutoSettings, clearAllFloopa
 local setupFloopa, revertFloopa
 local renderMainControls, renderBeatCounter
 
+-- Helper: Get list of Floopa tracks (1..5)
+-- Defined here to be accessible by cleanEmptyItems
+local function getFloopaTracks()
+    local list = {}
+    local numTracks = reaper.CountTracks(0)
+    for i = 0, numTracks - 1 do
+        local t = reaper.GetTrack(0, i)
+        local ok, name = reaper.GetSetMediaTrackInfo_String(t, "P_NAME", "", false)
+        if ok and name then
+            local n = name:match("^Floopa (%d+)$")
+            if n then
+                table.insert(list, { track = t, num = tonumber(n) })
+            end
+        end
+    end
+    table.sort(list, function(a,b) return a.num < b.num end)
+    return list
+end
+
+-- Prunes empty items from Floopa tracks and removes unused lanes.
+-- Criteria: MIDI with 0 events, or Audio below -50dB threshold.
+local function cleanEmptyItems()
+    reaper.Undo_BeginBlock()
+    local count = 0
+    local threshold_db = -50
+    
+    local function getAudioPeak(item)
+        -- Prefer SWS API for performance
+        if reaper.NF_GetMediaItemMaxPeak then
+            return reaper.NF_GetMediaItemMaxPeak(item)
+        end
+        
+        -- Fallback: Native sample analysis via Audio Accessor
+        local take = reaper.GetActiveTake(item)
+        if not take then return -150 end
+        
+        local accessor = reaper.CreateTakeAudioAccessor(take)
+        if not accessor then return -150 end
+        
+        local src = reaper.GetMediaItemTake_Source(take)
+        local num_channels = reaper.GetMediaSourceNumChannels(src)
+        local rate = reaper.GetMediaSourceSampleRate(src)
+        if rate == 0 then rate = 44100 end
+        
+        local len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+        local start_offs = reaper.GetMediaItemTakeInfo_Value(take, "D_STARTOFFS")
+        
+        -- Sample subset of points to maintain UI responsiveness
+        local points = 100 
+        local step = math.max(0.01, len / points)
+        
+        local buffer = reaper.new_array(num_channels * 2)
+        local max_val = 0
+        
+        for t = 0, len, step do
+            reaper.GetAudioAccessorSamples(accessor, rate, num_channels, t + start_offs, 1, buffer)
+            local samples = buffer.table()
+            for _, s in ipairs(samples) do
+                local abs_s = math.abs(s)
+                if abs_s > max_val then max_val = abs_s end
+            end
+            if max_val > 0.5 then break end -- Early exit on high signal
+        end
+        
+        reaper.DestroyAudioAccessor(accessor)
+        
+        if max_val == 0 then return -150 end
+        return 20 * math.log(max_val, 10)
+    end
+
+    local floopa_tracks = getFloopaTracks()
+    local tracks_cleaned = {} 
+
+    for _, tdata in ipairs(floopa_tracks) do
+        local track = tdata.track
+        if track then
+            local item_count = reaper.CountTrackMediaItems(track)
+            local track_cleaned_something = false
+            
+            -- Iterate backwards to safely delete items
+            for j = item_count - 1, 0, -1 do
+                local item = reaper.GetTrackMediaItem(track, j)
+                if item then
+                    local take = reaper.GetActiveTake(item)
+                    if take then
+                        local should_delete = false
+                        if reaper.TakeIsMIDI(take) then
+                            local _, notecnt = reaper.MIDI_CountEvts(take)
+                            if notecnt == 0 then should_delete = true end
+                        else
+                            local peak_db = getAudioPeak(item)
+                            if peak_db < threshold_db then should_delete = true end
+                        end
+
+                        if should_delete then
+                            reaper.DeleteTrackMediaItem(track, item)
+                            count = count + 1
+                            track_cleaned_something = true
+                        end
+                    end
+                end
+            end
+            
+            if track_cleaned_something then
+                table.insert(tracks_cleaned, track)
+            end
+        end
+    end
+    
+    -- Prune empty lanes on affected tracks
+    if #tracks_cleaned > 0 then
+        reaper.Main_OnCommand(40297, 0) -- Unselect all
+        for _, tr in ipairs(tracks_cleaned) do
+            reaper.SetTrackSelected(tr, true)
+        end
+        reaper.Main_OnCommand(42689, 0) -- Track lanes: Delete empty lanes
+        reaper.Main_OnCommand(40297, 0) -- Restore unselected state
+    end
+
+    reaper.UpdateArrange()
+    reaper.Undo_EndBlock("Clean Empty Floopa Items", -1)
+    
+    if count > 0 then
+        notifyInfo(string.format("Cleaned %d empty items (< %d dB) & lanes", count, threshold_db))
+    else
+        notifyInfo(string.format("No empty items found (Threshold: %d dB)", threshold_db))
+    end
+end
+
 -- === TRANSPORT CONTROLS ==================================
 -- Measure, BPM, Go To, Play/Stop, and Clear
 -- ===========================================================
@@ -1180,7 +1308,18 @@ local function drawTransportControls()
     end
     end)
 
-
+    -- Clean Button
+    reaper.ImGui_SameLine(State.ui.ctx)
+    with_vars({
+        {reaper.ImGui_StyleVar_FrameRounding(), UI_CONST.BUTTON_ROUNDING}
+    }, function()
+        if reaper.ImGui_Button(State.ui.ctx, "Clean", uiScale(60), uiScale(28)) then
+             cleanEmptyItems()
+        end
+    end)
+    if reaper.ImGui_IsItemHovered(State.ui.ctx) then
+        reaper.ImGui_SetTooltip(State.ui.ctx, "Remove empty items (MIDI with 0 notes, Audio < -50dB)")
+    end
 
     reaper.ImGui_Dummy(State.ui.ctx, 0, uiScale(15))
 
@@ -1441,7 +1580,7 @@ local function commandExists(cmd)
 end
 
 
-local getFloopaTracks
+local getFloopaTracks_original_location_removed
 
 -- Map fade shape string to REAPER shape code 
 local function mapFadeShapeToCode(shape)
@@ -2010,21 +2149,9 @@ local function ensureFloopaTracksIdempotent()
     return createdGuids
 end
 
-function getFloopaTracks()
-    local list = {}
-    local numTracks = reaper.CountTracks(0)
-    for i = 0, numTracks - 1 do
-        local t = reaper.GetTrack(0, i)
-        local ok, name = reaper.GetSetMediaTrackInfo_String(t, "P_NAME", "", false)
-        if ok and name then
-            local n = name:match("^Floopa (%d+)$")
-            if n then
-                table.insert(list, { track = t, num = tonumber(n) })
-            end
-        end
-    end
-    table.sort(list, function(a,b) return a.num < b.num end)
-    return list
+function getFloopaTracks_deprecated()
+    -- This function is kept for compatibility if needed, but the main one is defined above
+    return getFloopaTracks()
 end
 
 
@@ -3341,16 +3468,15 @@ end
            
              -- Overview
              reaper.ImGui_SeparatorText(State.ui.ctx, "What is Floopa Station")
-             reaper.ImGui_TextWrapped(State.ui.ctx, "Floopa Station is a live‑looping station for REAPER: it creates and manages 5 dedicated tracks, integrates transport controls, loop recording with Auto‑Loop, a visual Beat Counter and a loop progress bar, plus Audio/MIDI input and customizable shortcuts.")
-             reaper.ImGui_Spacing(State.ui.ctx)
+             reaper.ImGui_TextWrapped(State.ui.ctx, "Floopa Station is a live-looping station for REAPER: it creates and manages 5 dedicated tracks, integrates transport controls, loop recording with Auto‑Loop, a visual Beat Counter and a loop progress bar, plus Audio/MIDI input and customizable shortcuts.")
+             reaper.ImGui_Dummy(State.ui.ctx, 0, uiScale(10))
 
-             -- How it works
-            reaper.ImGui_SeparatorText(State.ui.ctx, "How it works")
-            reaper.ImGui_TextWrapped(State.ui.ctx, "• Press 'Setup Floopa' to create the tracks and configure your project.")
-            reaper.ImGui_TextWrapped(State.ui.ctx, "• 'Setup Floopa' clears any existing Time Selection and loop points so you start clean.")
-            reaper.ImGui_TextWrapped(State.ui.ctx, "• Use 'Loop Length' to set the desired measures; select '--' to remove the selection and loop points.")
-            reaper.ImGui_TextWrapped(State.ui.ctx, "• Enable 'Auto Loop' if you want recordings to define loop length and alignment automatically, at any position on the timeline.")
-            reaper.ImGui_TextWrapped(State.ui.ctx, "• Configure 'Start' (Alignment: Measure/Exact) and 'End' (Rounding: Smart/Nearest/Forward) for Auto‑Loop.")
+             reaper.ImGui_TextWrapped(State.ui.ctx, "• Use 'Setup Floopa' to initialize the tracks and routing.")
+             reaper.ImGui_TextWrapped(State.ui.ctx, "• Use 'Revert Default' to remove the tracks and restore settings.")
+             reaper.ImGui_TextWrapped(State.ui.ctx, "• Use 'Loop Length' to set the desired measures; select '--' to remove the selection and loop points.")
+             reaper.ImGui_TextWrapped(State.ui.ctx, "• Use 'Clean' to remove empty MIDI/Audio items (< -50dB) and unused lanes from Floopa tracks.")
+             reaper.ImGui_TextWrapped(State.ui.ctx, "• Enable 'Auto Loop' if you want recordings to define loop length and alignment automatically, at any position on the timeline.")
+            reaper.ImGui_TextWrapped(State.ui.ctx, "• Configure 'Start' (Alignment: Measure/Exact) and 'End' (Rounding: Smart/Nearest/Forward) for Auto-Loop.")
             reaper.ImGui_TextWrapped(State.ui.ctx, "• Use 'Rec' to record and 'Play/Pause' to listen inside the loop.")
             reaper.ImGui_TextWrapped(State.ui.ctx, "• The Beat Counter shows the current meter and the progress bar displays loop progression.")
             reaper.ImGui_TextWrapped(State.ui.ctx, "• In the 'FLOOPA TRACKS' panel you will find info for the selected track and shortcuts for input, mute, FX, reverse and transpose.")
@@ -3359,14 +3485,14 @@ end
              -- Main controls
              reaper.ImGui_SeparatorText(State.ui.ctx, "Main controls")
              reaper.ImGui_TextWrapped(State.ui.ctx, "• Play/Pause, Record Toggle, Metronome, Click Track.")
-             reaper.ImGui_TextWrapped(State.ui.ctx, "• Auto‑Loop: Start Align (Measure/Exact) and End Rounding (Smart/Nearest/Forward).")
+             reaper.ImGui_TextWrapped(State.ui.ctx, "• Auto-Loop: Start Align (Measure/Exact) and End Rounding (Smart/Nearest/Forward).")
              reaper.ImGui_TextWrapped(State.ui.ctx, "• Audio/MIDI input per Floopa tracks; Mute, FX, Reverse, Transpose ±12.")
              reaper.ImGui_TextWrapped(State.ui.ctx, "• Undo Lane and Undo All for quick take management.")
              reaper.ImGui_Spacing(State.ui.ctx)
 
              -- Auto-Loop details 
             reaper.ImGui_SeparatorText(State.ui.ctx, "Auto-Loop details")
-            reaper.ImGui_TextWrapped(State.ui.ctx, "Auto‑Loop uses your first recording pass to set loop length and position, then applies rounding at loop end. Configure Start Align and End Rounding to match your workflow.")
+            reaper.ImGui_TextWrapped(State.ui.ctx, "Auto-Loop uses your first recording pass to set loop length and position, then applies rounding at loop end. Configure Start Align and End Rounding to match your workflow.")
             reaper.ImGui_BulletText(State.ui.ctx, "Start Align: Measure (align to bar start) or Exact (align to selection start)")
             reaper.ImGui_BulletText(State.ui.ctx, "End Rounding: Smart / Nearest / Forward")
             reaper.ImGui_BulletText(State.ui.ctx, "Tolerance (Epsilon): Dynamic or Strict (ms)")
@@ -3374,28 +3500,28 @@ end
             reaper.ImGui_Spacing(State.ui.ctx)
             
             -- Count-In
-            reaper.ImGui_SeparatorText(State.ui.ctx, "Count‑In")
-            reaper.ImGui_TextWrapped(State.ui.ctx, "When enabled, Count‑In plays pre‑roll clicks before recording only.")
+            reaper.ImGui_SeparatorText(State.ui.ctx, "Count-In")
+            reaper.ImGui_TextWrapped(State.ui.ctx, "When enabled, Count-In plays pre-roll clicks before recording only.")
             reaper.ImGui_Spacing(State.ui.ctx)
 
             -- Beat Counter
             reaper.ImGui_SeparatorText(State.ui.ctx, "Beat Counter")
             reaper.ImGui_TextWrapped(State.ui.ctx, "Displays current measure/beat during playback and recording.")
             reaper.ImGui_BulletText(State.ui.ctx, "Syncs with Time Selection and Repeat loop for clear bar starts")
-            reaper.ImGui_BulletText(State.ui.ctx, "Visual guide for overdubs, punch‑ins, precise timing")
+            reaper.ImGui_BulletText(State.ui.ctx, "Visual guide for overdubs, punch-ins, precise timing")
             reaper.ImGui_BulletText(State.ui.ctx, "Toggle via the 'Beat Counter' checkbox in Main controls")
             reaper.ImGui_Spacing(State.ui.ctx)
 
-            reaper.ImGui_SeparatorText(State.ui.ctx, "Micro‑Fades")
-            reaper.ImGui_TextWrapped(State.ui.ctx, "Micro‑Fades gently smooth clip edges to avoid clicks. Project‑scoped setting; duration clamped to 0–500 ms (rounded to 10 ms steps).")
+            reaper.ImGui_SeparatorText(State.ui.ctx, "Micro-Fades")
+            reaper.ImGui_TextWrapped(State.ui.ctx, "Micro-Fades gently smooth clip edges to avoid clicks. Project-scoped setting; duration clamped to 0-500 ms (rounded to 10 ms steps).")
             reaper.ImGui_BulletText(State.ui.ctx, "Default: OFF at startup; enable via 'Auto Fades' in main controls")
-            reaper.ImGui_BulletText(State.ui.ctx, "Duration: milliseconds (0–500, rounded to 10 ms steps)")
+            reaper.ImGui_BulletText(State.ui.ctx, "Duration: milliseconds (0-500, rounded to 10 ms steps)")
             reaper.ImGui_BulletText(State.ui.ctx, "Shape: Linear / Exponential / Logarithmic")
              reaper.ImGui_Spacing(State.ui.ctx)
 
              reaper.ImGui_SeparatorText(State.ui.ctx, "Examples")
-             reaper.ImGui_TextWrapped(State.ui.ctx, "Grid‑aligned looping: Start Align=Measure, Epsilon=Dynamic; Micro‑Fades=On, 40ms, Exponential.")
-             reaper.ImGui_TextWrapped(State.ui.ctx, "Precise audio edit: Start Align=Exact, Epsilon=Strict (30ms); Micro‑Fades=On, 10ms, Linear.")
+             reaper.ImGui_TextWrapped(State.ui.ctx, "Grid-aligned looping: Start Align=Measure, Epsilon=Dynamic; Micro-Fades=On, 40ms, Exponential.")
+             reaper.ImGui_TextWrapped(State.ui.ctx, "Precise audio edit: Start Align=Exact, Epsilon=Strict (30ms); Micro-Fades=On, 10ms, Linear.")
              reaper.ImGui_Spacing(State.ui.ctx)
 
              -- Shortcut legend 

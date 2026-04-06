@@ -1,13 +1,14 @@
 -- Floop Sheet Reader - PDF and Image Viewer
 -- @description Floop Sheet Reader: load and view PDF and image files.
--- @version 2.1.0
+-- @version 2.2.0
 -- @author Floop-s
 -- @license GPL-3.0
 -- @changelog
---   v2.1
---   - Added About/Credits section with Poppler attribution.
---   - Restored Clear Cache button.
---   - Fixed tooltip contrast.
+--   - Completely resolved UI freezing during Poppler installation (asynchronous VBS/PowerShell pipeline).
+--   - Re-written image caching system to fix memory leaks and "invalid texture" errors.
+--   - "Select PDF/Image" now correctly remembers the last accessed directory.
+--   - Scoped global functions to local for script safety and performance.
+--   - Polished About/Credits modal.
 -- @about
 --   Windows-only script.
 --
@@ -81,6 +82,35 @@ local ui_config = {
 local sans_serif = reaper.ImGui_CreateFont("sans-serif", 13)
 reaper.ImGui_Attach(ctx, sans_serif)
 
+local last_pdf_dir = ""
+local last_img_dir = ""
+
+local function load_saved_dirs()
+    if reaper.HasExtState("FloopSheetReader", "LastPdfDir") then
+        last_pdf_dir = reaper.GetExtState("FloopSheetReader", "LastPdfDir")
+    end
+    if reaper.HasExtState("FloopSheetReader", "LastImgDir") then
+        last_img_dir = reaper.GetExtState("FloopSheetReader", "LastImgDir")
+    end
+end
+load_saved_dirs()
+
+local function get_parent_dir(p)
+    if not p or p == '' then return '' end
+    local dir = p:match("^(.*)[\\/][^\\/]+$")
+    return dir or ''
+end
+
+local function save_last_dir(key, path)
+    if not path or path == "" then return end
+    local dir = get_parent_dir(path)
+    if dir and dir ~= "" then
+        local dir_with_slash = dir .. "\\"
+        reaper.SetExtState("FloopSheetReader", key, dir_with_slash, true)
+        if key == "LastPdfDir" then last_pdf_dir = dir_with_slash
+        elseif key == "LastImgDir" then last_img_dir = dir_with_slash end
+    end
+end
 
 local function join_path(a, b)
     local sep = package.config and package.config:sub(1,1) or '\\'
@@ -97,21 +127,6 @@ local function sanitize_name(name)
     name = name:gsub("%s+$", "")
     name = name:gsub("[<>:\"/\\|%?%*]", "_")
     return name
-end
-
-local function get_parent_dir(p)
-    if not p or p == '' then return '' end
-    local dir = p:match("^(.*)[\\/][^\\/]+$")
-    return dir or ''
-end
-
-local function open_folder(dir)
-    if not dir or dir == '' then return end
-    reaper.RecursiveCreateDirectory(dir, 0)
-    local url = 'file:///' .. dir:gsub('\\', '/'):gsub(' ', '%%20')
-    if reaper.OpenURL then reaper.OpenURL(url) return end
-    if reaper.ExecProcess then reaper.ExecProcess('explorer.exe "' .. dir .. '"', 0) return end
-    os.execute('cmd /c start "" "' .. dir .. '"')
 end
 
 local function get_pdf_output_dir(path)
@@ -338,20 +353,6 @@ local function ps_quote(s)
     s = s:gsub("'", "''")
     return "'" .. s .. "'"
 end
-local function get_remote_content_length(url)
-    local ps = 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '
-    local cmd = '(Invoke-WebRequest -UseBasicParsing -Method Head -Uri ' .. quote_arg(url) .. ').Headers["Content-Length"]'
-    local h = io.popen(ps .. quote_arg(cmd))
-    local out = h and h:read('*a') or ''
-    if h then h:close() end
-    local n = tonumber((out or ''):match('%d+'))
-    if n and n > 0 then return n end
-    local c = io.popen('cmd.exe /c curl.exe -s -I -L ' .. quote_arg(url) .. ' 2>nul | findstr /C:"Content-Length"')
-    local o = c and c:read('*a') or ''
-    if c then c:close() end
-    local m = tonumber((o or ''):match('Content%-Length:%s*(%d+)'))
-    return m or 0
-end
 local function log(msg) end
 
 local function file_exists(path)
@@ -404,15 +405,6 @@ local last_poll_time = 0
 local download_progress = 0
 local texture_recreate_tried = {}
 
--- check if pdftoppm is installed
-function is_pdftoppm_installed()
-    local handle = io.popen("pdftoppm -v")
-    local result = handle:read("*a")
-    handle:close()
-    local ok = result and result:find("pdftoppm version") ~= nil
-    return ok
-end
-
 -- check if poppler is installed in the resource folder
 local function find_poppler_bin()
     local base = reaper.GetResourcePath() .. "\\Poppler"
@@ -440,150 +432,135 @@ local function find_poppler_bin()
     return nil
 end
 
-function is_poppler_installed()
+local pdftoppm_installed_cache = nil
+
+-- check if pdftoppm is installed
+local function is_pdftoppm_installed()
+    if pdftoppm_installed_cache ~= nil then return pdftoppm_installed_cache end
+    if find_poppler_bin() then
+        pdftoppm_installed_cache = true
+        return true
+    end
+    local handle = io.popen("pdftoppm -v 2>nul")
+    local result = handle and handle:read("*a") or ""
+    if handle then handle:close() end
+    pdftoppm_installed_cache = (result and result:find("pdftoppm version") ~= nil)
+    return pdftoppm_installed_cache
+end
+
+local function is_poppler_installed()
     return find_poppler_bin() ~= nil
 end
 
 -- install poppler
 local download_state = nil
 
-function install_pdftoppm()
+local function install_pdftoppm()
     local url = "https://github.com/oschwartz10612/poppler-windows/releases/download/v25.12.0-0/Release-25.12.0-0.zip"
-    
-    -- Pre-flight check: verify connectivity and file existence
     status_message = 'Checking connectivity...'
-    local total_bytes = get_remote_content_length(url)
     
-    if not total_bytes or total_bytes <= 0 then
-        log("Warning: Could not determine file size (Content-Length: " .. tostring(total_bytes) .. "). Attempting download anyway...")
-        -- Don't block, just proceed. Some servers/redirects might hide content-length.
-        total_bytes = 0 
-    else
-        log("Pre-flight check passed. File size: " .. tostring(total_bytes))
-    end
-
     local zip_path = join_path(reaper.GetResourcePath(), 'Poppler.zip')
     local extract_path = join_path(reaper.GetResourcePath(), 'Poppler')
     reaper.RecursiveCreateDirectory(extract_path, 0)
+    
     local vbs = join_path(extract_path, '_download_poppler.vbs')
-    local ps = 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '
-    local ps_cmd = 'Try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 ; $ProgressPreference=\"SilentlyContinue\" ; Invoke-WebRequest -UseBasicParsing -Headers @{ \"User-Agent\" = \"Mozilla/5.0\" } -Uri ' .. quote_arg(url) .. ' -OutFile ' .. ps_quote(zip_path) .. ' } Catch { Exit 1 }'
-    local cmd = ps .. quote_arg(ps_cmd)
-    log("PowerShell command: " .. cmd)
+    local ps1_path = join_path(extract_path, '_download_poppler.ps1')
+    local done_file = join_path(extract_path, '_install_done.txt')
+    local err_file = join_path(extract_path, '_install_err.txt')
+    
+    os.remove(done_file)
+    os.remove(err_file)
+
+    local expected_sha256 = '9499c7474e4deb41c80ef5ea4a18cc1f3843695fbfa3c247db5c46c6eab2e26f'
+
+    local ps_cmd = string.format([[
+Try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $ProgressPreference="SilentlyContinue"
+    Invoke-WebRequest -UseBasicParsing -Headers @{ "User-Agent" = "Mozilla/5.0" } -Uri '%s' -OutFile '%s'
+    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath '%s').Hash
+    if ($hash -ne '%s') { throw "SHA256 mismatch" }
+    Expand-Archive -LiteralPath '%s' -DestinationPath '%s' -Force
+    Remove-Item -LiteralPath '%s' -Force
+    Set-Content -Path '%s' -Value 'done'
+} Catch {
+    Set-Content -Path '%s' -Value $_.Exception.Message
+}
+]], url, zip_path, zip_path, expected_sha256, zip_path, extract_path, zip_path, done_file, err_file)
+
+    local f_ps1 = io.open(ps1_path, 'w')
+    if f_ps1 then f_ps1:write(ps_cmd); f_ps1:close() else return false end
+
+    local cmd = 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' .. quote_arg(ps1_path)
     local vbs_content = 'Set sh = CreateObject("WScript.Shell")\r\nsh.Run ' .. quote_arg(cmd) .. ', 0, False\r\n'
+    
     local f = io.open(vbs, 'w')
     if not f then return false end
     f:write(vbs_content)
     f:close()
-    log("Poppler download init")
-    log("URL: " .. url)
-    log("Zip path: " .. zip_path)
-    log("Extract path: " .. extract_path)
-    log("VBScript: " .. vbs)
-    local ret = os.execute('wscript.exe //B //Nologo ' .. quote_arg(vbs))
-    log("WSH run exit code: " .. tostring(ret))
+
+    os.execute('wscript.exe //B //Nologo ' .. quote_arg(vbs))
     
-    download_state = {active = true, start = reaper.time_precise and reaper.time_precise() or 0, vbs = vbs, extract = extract_path, zip = zip_path, prev_progress = 0, ps_cmd = cmd, url = url, expected_sha256 = '9499c7474e4deb41c80ef5ea4a18cc1f3843695fbfa3c247db5c46c6eab2e26f', total_bytes = total_bytes, warned_no_data = false}
+    download_state = {
+        active = true, 
+        start = reaper.time_precise and reaper.time_precise() or 0, 
+        vbs = vbs, 
+        ps1 = ps1_path,
+        extract = extract_path, 
+        zip = zip_path, 
+        done_file = done_file,
+        err_file = err_file
+    }
     status_is_error = false
-    status_message = 'Downloading Poppler…'
+    status_message = 'Downloading & Installing Poppler…'
     return true
 end
 
 local function step_download()
     if not download_state or not download_state.active then return end
-    local timeout = 300
+    local timeout = 600 -- 10 minutes max for download and extract
     local now = reaper.time_precise and reaper.time_precise() or 0
-    do
-        local zip = download_state.zip
-        if zip then
-            local sz = get_file_size(zip)
-            if sz and sz > 0 then
-                local total = download_state.total_bytes or 0
-                if total and total > 0 then
-                    download_progress = math.max(0, math.min(1, sz / total))
-                    download_state.prev_progress = download_progress
-                else
-                    local prev = download_state.prev_progress or 0
-                    if prev < 1 then
-                        download_progress = math.min(1, prev + 0.05)
-                        download_state.prev_progress = download_progress
-                    end
-                end
-            else
-                local elapsed = (now > 0 and download_state.start > 0) and (now - download_state.start) or 0
-                if elapsed > 5 and download_state.ps_cmd then
-                    log("No data after 5s, fallback to direct PowerShell")
-                    local ret2 = os.execute(download_state.ps_cmd)
-                    log("Direct PowerShell exit code: " .. tostring(ret2))
-                    download_state.ps_cmd = nil
-                    if (not ret2) or ret2 == 0 then
-                        local alt = string.format('curl.exe -L %s -o %s', quote_arg(download_state.url or ''), quote_arg(download_state.zip or ''))
-                        log("Trying curl fallback: " .. alt)
-                        local ret3 = os.execute(alt)
-                        log("curl exit code: " .. tostring(ret3))
-                        download_state.curl_done = ret3 and ret3 ~= 0
-                    end
-                end
-                if elapsed > 15 and not download_state.warned_no_data then
-                    status_is_error = true
-                    status_message = 'No internet or insufficient permissions: no data received'
-                    download_state.warned_no_data = true
-                end
-                download_progress = 0
-            end
-        else
-            if download_state.start and now and now > download_state.start then
-                download_progress = math.min(1, (now - download_state.start) / timeout)
-            else
-                download_progress = 0
-            end
-        end
-    end
-    do
-        local zip = download_state.zip
-        local extract = download_state.extract
-        if zip and extract and file_exists(zip) and not download_state.extracted and (download_state.curl_done or download_progress >= 0.99) then
-            status_message = 'Verifying integrity…'
-            log("Starting extraction")
-            local hash_cmd = string.format("powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"(Get-FileHash -Algorithm SHA256 -LiteralPath %s).Hash\"", ps_quote(zip))
-            local ph = io.popen(hash_cmd)
-            local out = ph and ph:read("*a") or ""
-            if ph then ph:close() end
-            local got = tostring(out or ""):gsub("%s+", ""):lower()
-            local exp = tostring(download_state.expected_sha256 or ""):lower()
-            log("SHA256 computed: " .. got)
-            log("SHA256 expected: " .. exp)
-            if exp ~= "" and got ~= "" and got ~= exp then
-                status_is_error = true
-                status_message = 'Poppler integrity check failed'
-                log("Integrity check failed, aborting extraction")
-                os.remove(zip)
-                download_state.active = false
-                if download_state.vbs then os.remove(download_state.vbs) end
-                return
-            end
+    local elapsed = now - download_state.start
+    
+    if file_exists(download_state.zip) then
+        local sz = get_file_size(download_state.zip)
+        download_progress = math.min(0.9, sz / 41000000)
+    else
+        if download_progress > 0 then
+            download_progress = 0.95
             status_message = 'Extracting Poppler…'
-            local cmd2 = string.format("powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"Expand-Archive -LiteralPath %s -DestinationPath %s -Force\"", ps_quote(zip), ps_quote(extract))
-            local r2 = os.execute(cmd2)
-            log("Expand-Archive exit code: " .. tostring(r2))
-            os.remove(zip)
-            download_state.extracted = true
+        else
+            download_progress = math.min(0.1, elapsed / 10)
         end
     end
-    if download_state.start > 0 and now > 0 and (now - download_state.start) > timeout then
-        download_state.active = false
-        status_is_error = true
-        status_message = 'Poppler download timeout'
-        log("Download timeout")
-        return
-    end
-    local bin = find_poppler_bin()
-    if bin then
+
+    if file_exists(download_state.done_file) then
         download_state.active = false
         status_is_error = false
         status_message = 'Poppler installed'
-        log("Poppler bin found: " .. tostring(bin))
-        if download_state.vbs then os.remove(download_state.vbs) end
+        download_progress = 1.0
+        os.remove(download_state.vbs)
+        os.remove(download_state.ps1)
+        os.remove(download_state.done_file)
+        os.remove(download_state.err_file)
+        return
+    end
+
+    if file_exists(download_state.err_file) then
+        download_state.active = false
+        status_is_error = true
+        local f = io.open(download_state.err_file, 'r')
+        local err_msg = f and f:read('*a') or 'Unknown error'
+        if f then f:close() end
+        status_message = 'Poppler installation failed: ' .. err_msg:sub(1, 30)
+        return
+    end
+
+    if elapsed > timeout then
+        download_state.active = false
+        status_is_error = true
+        status_message = 'Poppler download timeout'
+        return
     end
 end
 
@@ -626,8 +603,19 @@ local function list_missing_pages(output_dir, pages)
     return missing
 end
 
+local function create_validated_texture(path)
+    local tex = reaper.ImGui_CreateImage(path)
+    if not tex then return nil end
+    reaper.ImGui_Attach(ctx, tex)
+    local ok, w, h = pcall(reaper.ImGui_Image_GetSize, tex)
+    if ok and w and w > 0 and h and h > 0 then
+        return tex
+    end
+    if reaper.ImGui_Detach then reaper.ImGui_Detach(ctx, tex) end
+    return nil
+end
 local finalize_current_page
-function convert_pdf_to_images(pdf_path, output_dir)
+local function convert_pdf_to_images(pdf_path, output_dir)
     log('convert_pdf_to_images: pdf=' .. tostring(pdf_path) .. ' out=' .. tostring(output_dir))
 
     -- Fast path: if cache already has a complete contiguous set of pages,
@@ -718,7 +706,7 @@ function convert_pdf_to_images(pdf_path, output_dir)
     end
 end
  
-function load_all_pages(output_dir)
+local function load_all_pages(output_dir)
     log("load_all_pages: output_dir=" .. tostring(output_dir))
     local by_index = {}
     local idx = 0
@@ -760,26 +748,21 @@ function finalize_current_page(output_dir)
     log("finalize_current_page: current_page=" .. tostring(current_page) .. " image_path=" .. tostring(image_path))
     if image_path then
         images = {image_path}
-        local texture = reaper.ImGui_CreateImage(image_path)
+        local texture = create_validated_texture(image_path)
         if not texture then
             log("finalize_current_page: texture creation failed")
-        end
-        if texture then
-            local ok_sz, w_sz, h_sz = pcall(reaper.ImGui_Image_GetSize, texture)
-            log("finalize_current_page: texture size ok=" .. tostring(ok_sz) .. " w=" .. tostring(w_sz) .. " h=" .. tostring(h_sz))
-            if ok_sz and w_sz and h_sz and w_sz > 0 and h_sz > 0 then
-                local existing = textures[image_path]
-                if existing and reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(existing) end
-                textures[image_path] = texture
-            else
-                if reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(texture) end
-                log("finalize_current_page: invalid texture, destroyed")
+        else
+            local existing = textures[image_path]
+            if existing then
+                if reaper.ImGui_Detach then reaper.ImGui_Detach(ctx, existing) end
+                if reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(existing) end
             end
+            textures[image_path] = texture
         end
     end
 end
 
-function open_pdf()
+local function open_pdf()
     -- Clear previous textures to free memory
     textures = {}
     
@@ -798,7 +781,7 @@ function open_pdf()
 end
 
 -- Function to navigate to a specific page
-function go_to_page(page_number)
+local function go_to_page(page_number)
     if page_number < 1 then page_number = 1 end
     if page_number > total_pages then page_number = total_pages end
     
@@ -807,6 +790,7 @@ function go_to_page(page_number)
         current_page = page_number
         
         for path, texture in pairs(textures) do
+            if reaper.ImGui_Detach then reaper.ImGui_Detach(ctx, texture) end
             if reaper.ImGui_DestroyImage then
                 reaper.ImGui_DestroyImage(texture)
             end
@@ -836,14 +820,9 @@ function go_to_page(page_number)
         log('go_to_page: final_page=' .. tostring(current_page) .. ' image_path=' .. tostring(image_path))
         if image_path then
             images = {image_path}
-            local texture = reaper.ImGui_CreateImage(image_path)
+            local texture = create_validated_texture(image_path)
             if texture then
-                local ok_sz, w_sz, h_sz = pcall(reaper.ImGui_Image_GetSize, texture)
-                if ok_sz and w_sz and h_sz and w_sz > 0 and h_sz > 0 then
-                    textures[image_path] = texture
-                else
-                    if reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(texture) end
-                end
+                textures[image_path] = texture
             end
         end
     end
@@ -851,14 +830,18 @@ end
 
 -- Function to delete image files from the output directory
 local function delete_image_files(output_dir)
+    local to_remove = {}
     local i = 0
     while true do
         local name = reaper.EnumerateFiles and reaper.EnumerateFiles(output_dir, i)
         if not name then break end
         if name:match('^page%-%d+%.png$') then
-            os.remove(join_path(output_dir, name))
+            to_remove[#to_remove + 1] = join_path(output_dir, name)
         end
         i = i + 1
+    end
+    for _, path in ipairs(to_remove) do
+        os.remove(path)
     end
 end
 
@@ -1083,6 +1066,7 @@ local function abort_conversion()
         remove_directory(outdir)
     end
     for path, texture in pairs(textures) do
+        if reaper.ImGui_Detach then reaper.ImGui_Detach(ctx, texture) end
         if reaper.ImGui_DestroyImage then
             reaper.ImGui_DestroyImage(texture)
         end
@@ -1101,6 +1085,7 @@ end
 -- Function to clear images and textures
 local function clear_images_and_textures()
     for path, texture in pairs(textures) do
+        if reaper.ImGui_Detach then reaper.ImGui_Detach(ctx, texture) end
         if reaper.ImGui_DestroyImage then
             reaper.ImGui_DestroyImage(texture)
         end
@@ -1121,7 +1106,7 @@ local function draw_nav_button(label, enabled, page, w, h)
     if enabled then Theme.popButtonPrimary() else Theme.popButtonDisabled() end
 end
 
-function render_ui()
+local function render_ui()
     reaper.ImGui_SetNextWindowSize(ctx, ui_config.window_width, ui_config.window_height, reaper.ImGui_Cond_FirstUseEver())
     local theme_color_count, theme_style_count = applyTheme()
     reaper.ImGui_PushFont(ctx, sans_serif, 13)
@@ -1129,8 +1114,8 @@ function render_ui()
     local btn_h_global = (ui_config.btn_height and ui_config.btn_height > 0) and ui_config.btn_height or reaper.ImGui_GetFrameHeight(ctx)
 
     local visible, open = reaper.ImGui_Begin(ctx, 'Sheet Reader v-2.0 | PDF & Image Viewer', true, window_flags)
-    reaper.ImGui_Dummy(ctx, 0, 5)
     if visible then
+        reaper.ImGui_Dummy(ctx, 0, 5)
         
         -- Drag and drop handling
         if reaper.ImGui_BeginDragDropTarget(ctx) then
@@ -1140,6 +1125,7 @@ function render_ui()
                 if ok and filename then
                     if is_valid_pdf(filename) then
                         for path, texture in pairs(textures) do
+                            if reaper.ImGui_Detach then reaper.ImGui_Detach(ctx, texture) end
                             if reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(texture) end
                         end
                         textures = {}
@@ -1152,23 +1138,16 @@ function render_ui()
                         current_page = 1
                         images = {filename}
                         for path, texture in pairs(textures) do
+                            if reaper.ImGui_Detach then reaper.ImGui_Detach(ctx, texture) end
                             if reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(texture) end
                         end
                         textures = {}
                         texture_recreate_tried = {}
-                        local texture = reaper.ImGui_CreateImage(filename)
+                        local texture = create_validated_texture(filename)
                         if texture then
-                            local ok_sz, w_sz, h_sz = pcall(reaper.ImGui_Image_GetSize, texture)
-                            if ok_sz and w_sz and h_sz and w_sz > 0 and h_sz > 0 then
-                                textures[filename] = texture
-                                status_is_error = false
-                                status_message = 'Image loaded'
-                            else
-                                if reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(texture) end
-                                status_is_error = true
-                                status_message = 'Image loading failed'
-                                images = {}
-                            end
+                            textures[filename] = texture
+                            status_is_error = false
+                            status_message = 'Image loaded'
                         else
                             status_is_error = true
                             status_message = 'Image loading failed'
@@ -1185,14 +1164,16 @@ function render_ui()
         -- button to select pdf and image files
         Theme.pushButtonPrimary()
         if reaper.ImGui_Button(ctx, 'Select PDF', 160, btn_h_global) then
-            local retval, selected_path = reaper.GetUserFileNameForRead('', 'Select PDF', '*.pdf')
+            local retval, selected_path = reaper.GetUserFileNameForRead(last_pdf_dir, 'Select PDF', '*.pdf')
             if retval then 
+                save_last_dir("LastPdfDir", selected_path)
                 log('Select PDF: ' .. tostring(selected_path))
                 if not is_valid_pdf(selected_path) then
                     status_is_error = true
                     status_message = 'Invalid PDF file'
                 else
                     for path, texture in pairs(textures) do
+                        if reaper.ImGui_Detach then reaper.ImGui_Detach(ctx, texture) end
                         if reaper.ImGui_DestroyImage then
                             reaper.ImGui_DestroyImage(texture)
                         end
@@ -1218,8 +1199,9 @@ function render_ui()
         reaper.ImGui_SameLine(ctx)
         Theme.pushButtonPrimary()
         if reaper.ImGui_Button(ctx, 'Select Image', 160, btn_h_global) then
-            local retval, selected_path = reaper.GetUserFileNameForRead('', 'Select Image', '*.png;*.jpg;*.jpeg')
+            local retval, selected_path = reaper.GetUserFileNameForRead(last_img_dir, 'Select Image', '*.png;*.jpg;*.jpeg')
             if retval then
+                save_last_dir("LastImgDir", selected_path)
                 log('Select Image: ' .. tostring(selected_path))
                 if not is_valid_image(selected_path) then
                     status_is_error = true
@@ -1230,25 +1212,18 @@ function render_ui()
                     current_page = 1
                     images = {selected_path}
                     for path, texture in pairs(textures) do
+                        if reaper.ImGui_Detach then reaper.ImGui_Detach(ctx, texture) end
                         if reaper.ImGui_DestroyImage then
                             reaper.ImGui_DestroyImage(texture)
                         end
                     end
                     textures = {}
                     texture_recreate_tried = {}
-                    local texture = reaper.ImGui_CreateImage(selected_path)
+                    local texture = create_validated_texture(selected_path)
                     if texture then
-                        local ok_sz, w_sz, h_sz = pcall(reaper.ImGui_Image_GetSize, texture)
-                        if ok_sz and w_sz and h_sz and w_sz > 0 and h_sz > 0 then
-                            textures[selected_path] = texture
-                            status_is_error = false
-                            status_message = 'Image loaded'
-                        else
-                            if reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(texture) end
-                            status_is_error = true
-                            status_message = 'Image loading failed'
-                            images = {}
-                        end
+                        textures[selected_path] = texture
+                        status_is_error = false
+                        status_message = 'Image loaded'
                     else
                         status_is_error = true
                         status_message = 'Image loading failed'
@@ -1260,14 +1235,16 @@ function render_ui()
         Theme.popButtonPrimary()
 
         reaper.ImGui_SameLine(ctx)
-        Theme.pushTextAlt()
-        if reaper.ImGui_SmallButton(ctx, '(?)') then
+        Theme.pushButtonPrimary()
+        if reaper.ImGui_Button(ctx, ' ? ', 30, btn_h_global) then
             open_about = true
         end
         if reaper.ImGui_IsItemHovered(ctx) then
+            Theme.pushTextAlt()
             reaper.ImGui_SetTooltip(ctx, 'About / Credits')
+            Theme.popText()
         end
-        Theme.popText()
+        Theme.popButtonPrimary()
 
         if download_state and download_state.active then
             local base_w = 400
@@ -1429,81 +1406,59 @@ function render_ui()
         local texture = textures[image_path]
         if not texture then
             if file_exists(image_path) and not texture_recreate_tried[image_path] then
-                local t2 = reaper.ImGui_CreateImage(image_path)
+                texture_recreate_tried[image_path] = true
+                local t2 = create_validated_texture(image_path)
                 if t2 then
-                    local ok_sz2, w2, h2 = pcall(reaper.ImGui_Image_GetSize, t2)
-                    if ok_sz2 and w2 and h2 and w2 > 0 and h2 > 0 then
-                        textures[image_path] = t2
-                        texture_recreate_tried[image_path] = true
-                    else
-                        if reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(t2) end
-                        texture_recreate_tried[image_path] = true
-                        status_is_error = true
-                        status_message = 'Image texture invalid'
-                    end
+                    textures[image_path] = t2
+                    status_is_error = false
+                    status_message = 'Image loaded'
                 else
-                    texture_recreate_tried[image_path] = true
                     status_is_error = true
-                    status_message = 'Image texture missing'
+                    status_message = 'Image texture invalid'
                 end
             end
         else
             if type(texture) ~= 'userdata' then
                 textures[image_path] = nil
             else
-            local ok, width, height = pcall(reaper.ImGui_Image_GetSize, texture)
-            if not ok or not width or not height or width <= 0 or height <= 0 then
-                if reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(texture) end
-                textures[image_path] = nil
-                if file_exists(image_path) and not texture_recreate_tried[image_path] then
-                    local t2 = reaper.ImGui_CreateImage(image_path)
-                    if t2 then
-                        local ok_sz2, w2, h2 = pcall(reaper.ImGui_Image_GetSize, t2)
-                        if ok_sz2 and w2 and h2 and w2 > 0 and h2 > 0 then
-                            textures[image_path] = t2
-                            texture_recreate_tried[image_path] = true
-                        else
-                            if reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(t2) end
-                            texture_recreate_tried[image_path] = true
-                            status_is_error = true
-                            status_message = 'Image texture invalid'
-                        end
-                    else
-                        texture_recreate_tried[image_path] = true
-                        status_is_error = true
-                        status_message = 'Image texture missing'
-                    end
-                end
-            else
-                local ww = reaper.ImGui_GetWindowWidth(ctx)
-                local avail_w = ww - 2 * ui_config.window_padding_x
-                local base_scale = ui_config.fit_width and (avail_w / width) or 1
-                width, height = width * base_scale * ui_config.zoom_level, height * base_scale * ui_config.zoom_level
-                local ok2 = pcall(reaper.ImGui_Image, ctx, texture, width, height, 0, 0, 1, 1)
-                if not ok2 then
+                local ok, width, height = pcall(reaper.ImGui_Image_GetSize, texture)
+                if not ok or not width or not height or width <= 0 or height <= 0 then
+                    if reaper.ImGui_Detach then reaper.ImGui_Detach(ctx, texture) end
                     if reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(texture) end
                     textures[image_path] = nil
                     if file_exists(image_path) and not texture_recreate_tried[image_path] then
-                        local t3 = reaper.ImGui_CreateImage(image_path)
-                        if t3 then
-                            local ok_sz3, w3, h3 = pcall(reaper.ImGui_Image_GetSize, t3)
-                            if ok_sz3 and w3 and h3 and w3 > 0 and h3 > 0 then
+                        texture_recreate_tried[image_path] = true
+                        local t2 = create_validated_texture(image_path)
+                        if t2 then
+                            textures[image_path] = t2
+                            status_is_error = false
+                        else
+                            status_is_error = true
+                            status_message = 'Image texture invalid'
+                        end
+                    end
+                else
+                    local ww = reaper.ImGui_GetWindowWidth(ctx)
+                    local avail_w = ww - 2 * ui_config.window_padding_x
+                    local base_scale = ui_config.fit_width and (avail_w / width) or 1
+                    width, height = width * base_scale * ui_config.zoom_level, height * base_scale * ui_config.zoom_level
+                    local ok2 = pcall(reaper.ImGui_Image, ctx, texture, width, height, 0, 0, 1, 1)
+                    if not ok2 then
+                        if reaper.ImGui_Detach then reaper.ImGui_Detach(ctx, texture) end
+                        if reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(texture) end
+                        textures[image_path] = nil
+                        if file_exists(image_path) and not texture_recreate_tried[image_path] then
+                            texture_recreate_tried[image_path] = true
+                            local t3 = create_validated_texture(image_path)
+                            if t3 then
                                 textures[image_path] = t3
-                                texture_recreate_tried[image_path] = true
                             else
-                                if reaper.ImGui_DestroyImage then reaper.ImGui_DestroyImage(t3) end
-                                texture_recreate_tried[image_path] = true
                                 status_is_error = true
                                 status_message = 'Image draw failed'
                             end
-                        else
-                            texture_recreate_tried[image_path] = true
-                            status_is_error = true
-                            status_message = 'Image draw failed'
                         end
                     end
                 end
-            end
             end
         end
     end
@@ -1515,21 +1470,31 @@ function render_ui()
         Theme.pushModal()
         if reaper.ImGui_BeginPopupModal(ctx, 'About / Credits', true, reaper.ImGui_WindowFlags_AlwaysAutoResize()) then
             reaper.ImGui_Text(ctx, 'Sheet Reader v2.0')
-            reaper.ImGui_Text(ctx, 'Author: Flora Tarantino')
+            reaper.ImGui_Text(ctx, 'Author: Flora Tarantino (Floop-s)')
+            
+            reaper.ImGui_Dummy(ctx, 0, 2)
+            Theme.pushButtonPrimary()
+            if reaper.ImGui_Button(ctx, 'GitHub', 90, 0) then
+                if reaper.APIExists('CF_ShellExecute') then
+                    reaper.CF_ShellExecute('https://github.com/floop-s/floops-reaper-scripts')
+                end
+            end
+            reaper.ImGui_SameLine(ctx)
+            if reaper.ImGui_Button(ctx, 'Ko-fi', 90, 0) then
+                if reaper.APIExists('CF_ShellExecute') then
+                    reaper.CF_ShellExecute('https://ko-fi.com/floopsreaperscripts')
+                end
+            end
+            Theme.popButtonPrimary()
+
             reaper.ImGui_Separator(ctx)
             reaper.ImGui_Text(ctx, 'PDF conversion powered by Poppler (GPL).')
             reaper.ImGui_Text(ctx, 'Windows binaries: oschwartz10612/poppler-windows')
             Theme.pushButtonPrimary()
-            if reaper.ImGui_Button(ctx, 'Open GitHub', 140, 0) then
-                if reaper.APIExists and reaper.APIExists('CF_ShellExecute') then
+            if reaper.ImGui_Button(ctx, 'Poppler GitHub', 120, 0) then
+                if reaper.APIExists('CF_ShellExecute') then
                     reaper.CF_ShellExecute('https://github.com/oschwartz10612/poppler-windows')
                 end
-            end
-            Theme.popButtonPrimary()
-            reaper.ImGui_Separator(ctx)
-            Theme.pushButtonPrimary()
-            if reaper.ImGui_Button(ctx, 'Close', 120, 0) then
-                reaper.ImGui_CloseCurrentPopup(ctx)
             end
             Theme.popButtonPrimary()
             reaper.ImGui_EndPopup(ctx)
@@ -1551,12 +1516,10 @@ function render_ui()
             reaper.ImGui_SameLine(ctx)
             if reaper.ImGui_Button(ctx, 'Open Folder', 120, btn_h) then
                 local dir = get_cache_base_dir()
-                if reaper.APIExists and reaper.APIExists('CF_ShellExecute') then
+                if reaper.APIExists('CF_ShellExecute') then
                     reaper.CF_ShellExecute(dir)
-                elseif reaper.APIExists and reaper.APIExists('BR_Win32_ShellExecute') then
+                elseif reaper.APIExists('BR_Win32_ShellExecute') then
                     reaper.BR_Win32_ShellExecute(dir)
-                else
-                    open_folder(dir)
                 end
             end
             Theme.popButtonPrimary()
@@ -1626,7 +1589,6 @@ function render_ui()
             
             reaper.ImGui_SetNextWindowSize(ctx, 420, 160, reaper.ImGui_Cond_Appearing())
             if reaper.ImGui_BeginPopupModal(ctx, 'Confirm Delete All', true, 0) then
-                Theme.pushModal()
                 reaper.ImGui_Text(ctx, 'Are you sure you want to delete ALL caches?')
                 reaper.ImGui_Dummy(ctx, 0, 5)
                 local btn_h2 = reaper.ImGui_GetFrameHeight(ctx)
@@ -1645,7 +1607,6 @@ function render_ui()
                     reaper.ImGui_CloseCurrentPopup(ctx)
                 end
                 Theme.popButtonPrimary()
-                Theme.popModal()
                 reaper.ImGui_EndPopup(ctx)
             end
 

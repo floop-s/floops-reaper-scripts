@@ -1,5 +1,7 @@
 # Floopa Station - Live Looper Station
 
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.1.2-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+
 A live‑looping station for REAPER
 
 ## Overview
@@ -9,8 +11,8 @@ A live‑looping station for REAPER
 
 <p align="center"> 
   <br> 
-  <a href="../../assets/floopa-station-v1.1.0.png" target="_blank"> 
-    <img src="../../assets/floopa-station-v1.1.0.png" width="450"  alt="click to zoom in"> 
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floopa-station-v1.1.0.png" target="_blank"> 
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floopa-station-v1.1.0.png" width="450" style="border: 1px solid #27a086ff;" alt="click to zoom in"> 
   </a> 
   <br> 
   <br> 
@@ -21,6 +23,7 @@ A live‑looping station for REAPER
 
 - **5 Loop Tracks**: Controls for Select, Input (Audio/MIDI), Mute, Undo, FX, Reverse, Transpose ±12 semitones.
 - **Auto‑Loop**: Alignment and rounding options (Start Align, End Rounding, Epsilon Mode).
+- **Clean**: Remove empty items (MIDI with 0 events, Audio < -50dB) and prune unused lanes with one click.
 - **Micro‑Fades**: Adjustable duration and curve for loop clip in/out smoothing.
 - **Count‑In**: Optional pre‑roll clicks before recording.
 - **Integrated Transport**: Play/Pause/Record/Metronome/Repeat.
@@ -38,8 +41,12 @@ A live‑looping station for REAPER
 ## Compatibility
 *   **REAPER**: Developed and tested on **v7.5x+** (Windows).
 *   **Operating Systems**:
+
+    ![Platform](https://img.shields.io/badge/Tested-Windows-yellow) ![Platform](https://img.shields.io/badge/macOS%20%2F%20Linux-Untested-orange)
+    
     *   **Windows**: Fully tested and supported.
     *   **macOS / Linux**: Designed with cross-platform compatibility in mind (using system-agnostic path handling), but not personally tested on these systems. Feedback is welcome!
+
 
 
 ## Installation
@@ -74,12 +81,21 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 5.  Use **Count‑In** for pre‑roll clicks before recording.
 6.  Use the **Beat Counter** and progress bar as visual references.
 
-## Usage Notes
+## Changelog
 
-79→- **Auto‑Loop**: Uses your first recording pass to set loop length and alignment at any position on the timeline and handles Repeat automatically when using "Setup Floopa".
-80→- **Auto‑Loop behavior**: Works from any position on the timeline; recording no longer needs to start at bar 1.
-- **Micro‑Fades**: Smooth clip edges; toggle via "Auto Fades".
-- **Count‑In**: Plays pre‑roll clicks before recording only (metronome ON for pre‑roll, OFF during recording). Defaults to 2 measures (adjustable in REAPER settings).
+### v1.1.2
+- **New Feature**: Added "Clean" button to remove empty items (MIDI with 0 events, Audio < -50dB) and prune unused lanes on Floopa tracks.
+
+### v1.1.1
+- **Fix**: Auto-Loop length and recording position fixed (timeline-agnostic behavior).
+
+### v1.1.0
+- **New Feature**: Added "Auto Fades" toggle (Micro-Fades).
+- **New Feature**: Added "Count-In" toggle.
+- **New Feature**: Added "Beat Counter" toggle.
+- **Enhancement**: Improved loop progress bar visualization.
+- **Enhancement**: Updated "Help" modal with new sections.
+- **Fix**: Minor bug fixes and performance improvements.
 
 ## Parameters & Configuration
 
@@ -131,6 +147,13 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 - Improved consistency of progress bar and HUD.
 - Added "Auto‑Loop" and "Micro‑Fades" help sections.
 
+## Support
+
+All my tools are free and open-source.
+If they help your workflow, consider supporting the project on Ko-fi
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-orange?style=flat-square&logo=ko-fi)](https://ko-fi.com/floopsreaperscripts)
+
 ## Author
 
 Developed by **Flora Tarantino**  
@@ -140,3 +163,6 @@ Project home: [https://www.floratarantino.com/floop-reaper-scripts/](https://www
 
 Licensed under the **GNU General Public License v3.0 (GPL-3.0)**  
 See the `LICENSE.txt` file in the main repository for details.
+
+
+
