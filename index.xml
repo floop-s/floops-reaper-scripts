@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="c83e269330092eb3a01d19dacd92a9b63cf20155">
+<index version="1" name="Floop's Reaper Scripts" commit="2b418bb07d1a4370e07d4686df3c7a04dcbae304">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -264,6 +264,14 @@ Animated floating UI with debounced search.]]></changelog>
 - Fixed tooltip contrast.]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/f0453fa17b73b4a3025b7ceb5ec4e976b1ff43bb/scripts/floop-sheet-reader/floop-sheet-reader.lua</source>
       </version>
+      <version name="2.2.0" author="Floop-s" time="2026-04-06T18:00:57Z">
+        <changelog><![CDATA[- Completely resolved UI freezing during Poppler installation (asynchronous VBS/PowerShell pipeline).
+- Re-written image caching system to fix memory leaks and "invalid texture" errors.
+- "Select PDF/Image" now correctly remembers the last accessed directory.
+- Scoped global functions to local for script safety and performance.
+- Polished About/Credits modal.]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/2b418bb07d1a4370e07d4686df3c7a04dcbae304/scripts/floop-sheet-reader/floop-sheet-reader.lua</source>
+      </version>
     </reapack>
   </category>
   <category name="scripts/floop-studio-trainer">
@@ -344,6 +352,11 @@ Animated floating UI with debounced search.]]></changelog>
 - Auto-Loop length and recording position fixed (timeline-agnostic behavior).]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/efa4ea774f61ec1124e15d016044870a9c53b5e6/scripts/floopa-station/floopa-station.lua</source>
         <source file="modules/midi-map.lua">https://github.com/floop-s/floops-reaper-scripts/raw/efa4ea774f61ec1124e15d016044870a9c53b5e6/scripts/floopa-station/modules/midi-map.lua</source>
+      </version>
+      <version name="1.1.2" author="Floop-s" time="2026-04-06T18:00:57Z">
+        <changelog><![CDATA[- Added "Clean" function: removes empty MIDI/Audio items (< -50dB) and prunes unused lanes on Floopa tracks.]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/2b418bb07d1a4370e07d4686df3c7a04dcbae304/scripts/floopa-station/floopa-station.lua</source>
+        <source file="modules/midi-map.lua">https://github.com/floop-s/floops-reaper-scripts/raw/2b418bb07d1a4370e07d4686df3c7a04dcbae304/scripts/floopa-station/modules/midi-map.lua</source>
       </version>
     </reapack>
   </category>
