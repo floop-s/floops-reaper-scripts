@@ -1,5 +1,7 @@
 # Floop Scratchpad
 
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.3.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+
 **Track Notes System for REAPER.**
 
 
@@ -13,13 +15,13 @@ The script generates a companion JSFX (FloopNoteReader) that displays your notes
 
 <p align="center"> 
   <br> 
-  <a href="../../assets/floop-scratchpad-s1-v1.2.3.png" target="_blank"> 
-    <img src="../../assets/floop-scratchpad-s1-v1.2.3.png" width="450"  alt="click to zoom in"> 
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-s1-v1.2.3.png" target="_blank"> 
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-s1-v1.2.3.png" width="450" style="border: 1px solid #202121ff;" alt="Click to zoom in"> 
   </a> 
   <br> 
    <br> 
-  <a href="../../assets/floop-scratchpad-s2-v1.2.3.png" target="_blank"> 
-    <img src="../../assets/floop-scratchpad-s2-v1.2.3.png" width="450"  alt="click to zoom in"> 
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-s2-v1.2.3.png" target="_blank"> 
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-s2-v1.2.3.png" width="450" style="border: 1px solid #202121ff;" alt="Click to zoom in"> 
   </a> 
   <br> 
 </p>
@@ -28,12 +30,14 @@ The script generates a companion JSFX (FloopNoteReader) that displays your notes
 
 *   **Per-Track Notes**: Write and store notes tied to each track.
 *   **Auto-Load**: Notes load automatically when switching selected tracks.
-*   **JSFX Note Reader**: Dynamically generates **FloopNoteReader.jsfx** to display notes in TCP/MCP.
+*   **JSFX Note Reader**: Dynamically generates **FloopNoteReader.jsfx** to display notes in TCP/MCP using high-performance global memory (`gmem`).
 *   **Autosave**: Avoids losing edits when switching tracks.
 *   **Duplicate-Safe**: Prevents multiple JSFX instances on the same track.
 *   **Compact UI**: Rounded sliders, white grab, flicker-free font scaling.
 *   **Backup**: Creates a `.bak` file when clearing notes.
 *   **Cross-Platform**: Windows, Mac, Linux.
+
+> **⚠️ Important Note on Unsaved Projects**: Notes written while a project is "unsaved" cannot currently be migrated when the project is saved for the first time. **Please save your project (.rpp) before adding notes.**
 
 ## Requirements
 
@@ -108,6 +112,12 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 
 ## Changelog
 
+### v1.3.0 (2026-04-10)
+*   **Added**: Global Memory (gmem) architecture for JSFX readers, vastly improving performance and reducing disk I/O.
+*   **Fixed**: Resolved a bug where all JSFX instances shared the same text across different tracks.
+*   **Fixed**: Background startup script now automatically restores volatile gmem notes on project load.
+*   **Note**: Notes written in unsaved projects cannot currently be migrated to saved projects. Please save your project before adding notes.
+
 ### v1.2.4 (2026-02-17)
 *   **Added**: Numeric JSFX font size input next to the Font Scale slider (14–40 px).
 *   **Improved**: Increased JSFX font size range and clamping for large sessions and high-DPI layouts.
@@ -149,7 +159,11 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 *   **Added**: Prevention of duplicate JSFX instances on the same track.
 *   **Fixed**: Slider flicker removed by refreshing after edit ends.
 
-## Author
+## Support Development
+
+If you find my scripts useful and want to support their development, you can buy me a coffee on Ko-fi:
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-orange?style=flat-square&logo=ko-fi)](https://ko-fi.com/floopsreaperscripts)
 
 ## Author
 

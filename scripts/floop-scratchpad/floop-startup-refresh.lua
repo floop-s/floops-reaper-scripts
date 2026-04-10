@@ -1,5 +1,5 @@
 -- @description Floop Startup Refresh
--- @version 1.2.4
+-- @version 1.3.0
 -- @author Floop-s
 -- @date 17-02-2026
 -- @noindex
@@ -10,8 +10,7 @@
 
 local reaper = reaper
 
--- Helper functions to avoid scope issues
-
+-- Path utilities
 local function joinPath(...)
   local parts = {...}
   local sep = package.config:sub(1,1)
@@ -27,53 +26,26 @@ local function getSystemHome()
 end
 
 local function getProjectPath()
+  -- Extracts root project path, bypassing GetProjectPath media directory overrides.
+  local _, projfn = reaper.EnumProjects(-1)
+  if projfn and projfn ~= "" then
+    local dir = projfn:match("^(.*)[/\\]")
+    if dir and dir ~= "" then
+      return dir
+    end
+  end
+
+  -- Fallback for unsaved projects.
   local projectPath = reaper.GetProjectPath("")
-  if projectPath == "" then
-    -- Use REAPER Media for unsaved projects
+  if not projectPath or projectPath == "" or not projfn or projfn == "" then
     local docs = joinPath(getSystemHome(), "Documents")
     return joinPath(docs, "REAPER Media")
   end
+  
   return projectPath
 end
 
-local function getNotesFilePath()
-  local projectPath = getProjectPath()
-  local r1, r2 = reaper.GetProjectName(0, "")
-  local projectName = (type(r2) == "string" and r2 ~= "" and r2) or (type(r1) == "string" and r1 or "")
-  if projectName == "" then
-    projectName = "unsaved_project"
-  else
-    projectName = projectName:gsub("%.rpp$", "")
-  end
-  return joinPath(projectPath, projectName .. "_notes.txt")
-end
 
-local function readFile(filePath)
-  local f = io.open(filePath, "r")
-  if not f then return nil end
-  local c = f:read("*all")
-  f:close()
-  return c
-end
-
-local function appendFile(filePath, content)
-  local f = io.open(filePath, "a")
-  if not f then return false end
-  f:write(content)
-  f:close()
-  return true
-end
-
-local function getLogFilePath()
-  local projectPath = getProjectPath()
-  return joinPath(projectPath, "FloopScratchpad.log")
-end
-
-local function logError(msg)
-  local ts = os.date("%Y-%m-%d %H:%M:%S")
-  local line = "[" .. ts .. "] " .. tostring(msg) .. "\n"
-  appendFile(getLogFilePath(), line)
-end
 
 local function isDirWritable(filePath)
   local dir = filePath:match("^(.*)[/\\][^/\\]+$")
@@ -88,7 +60,36 @@ local function isDirWritable(filePath)
   return true
 end
 
--- Notes parsing
+local function getNotesFilePath()
+  local projectPath = getProjectPath()
+  local r1, r2 = reaper.GetProjectName(0, "")
+  local projectName = (type(r2) == "string" and r2 ~= "" and r2) or (type(r1) == "string" and r1 or "")
+  if projectName == "" then
+    projectName = "unsaved_project"
+  else
+    projectName = projectName:gsub("%.rpp$", "")
+  end
+  
+  local candidate = joinPath(projectPath, projectName .. "_notes.txt")
+  local writable = isDirWritable(candidate)
+  if writable then
+    return candidate
+  else
+    local fallbackDir = joinPath(reaper.GetResourcePath(), "FloopNotes")
+    reaper.RecursiveCreateDirectory(fallbackDir, 0)
+    return joinPath(fallbackDir, projectName .. "_notes.txt")
+  end
+end
+
+local function readFile(filePath)
+  local f = io.open(filePath, "r")
+  if not f then return nil end
+  local c = f:read("*all")
+  f:close()
+  return c
+end
+
+-- Data parsers
 local function getNoteForGUID(allNotes, guid)
   if not allNotes or allNotes == "" or not guid then return "" end
   
@@ -112,7 +113,6 @@ local function getNoteForGUID(allNotes, guid)
   return ""
 end
 
--- Read stored FontScale for a GUID, fallback to 1.30
 local function getFontScaleForGUID(allNotes, guid)
   if not allNotes or allNotes == "" or not guid then return 1.30 end
   
@@ -133,34 +133,74 @@ local function getFontScaleForGUID(allNotes, guid)
   return 1.30
 end
 
--- JSFX writer
-local function createJSFXFile(noteContent, fontScale)
+-- Static JSFX creation
+local function createStaticJSFXFile()
   local resourcePath = reaper.GetResourcePath()
   local effectsDir = joinPath(resourcePath, 'Effects')
   local jsfxPath = joinPath(effectsDir, 'FloopNoteReader.jsfx')
   reaper.RecursiveCreateDirectory(effectsDir, 0)
 
-  local safe = (noteContent or ""):gsub('"','\\"'):gsub('\n','\\n')
-  if #safe > 200 then safe = safe:sub(1,200) .. "..." end
-  local scale = tonumber(fontScale) or 1.30
-  local jsfx = string.format([[desc:Floop Note Reader
+  local jsfx = [[desc:Floop Note Reader
+// @version 1.3.0
+// @author Floop-s
+// @about Static JSFX reader for Floop Scratchpad. Uses gmem to receive notes.
+
+slider1:0<0,1000000,1>-Track ID (Hidden)
+
+options:gmem=FloopScratchpad
+
 @init
-#note_text = "%s";
-font_scale = %.2f;
-force_big = 0;
+last_version = -1;
+last_track_id = -1;
+init_done = 0;
 
 @gfx 400 140
+track_id = slider1;
+offset = track_id * 256;
+version = gmem[offset + 255];
+
+track_id != last_track_id || version != last_version || init_done == 0 ? (
+  init_done = 1;
+  last_track_id = track_id;
+  last_version = version;
+  len = gmem[offset];
+  #note_text = "";
+  i = 0;
+  while (i < len && i < 200) (
+    char = gmem[offset + 1 + i];
+    sprintf(#char_str, "%c", char);
+    strcat(#note_text, #char_str);
+    i += 1;
+  );
+  font_scale = gmem[offset + 250];
+  font_scale <= 0 ? font_scale = 1.30 : font_scale;
+  force_big = gmem[offset + 251];
+);
+
+track_id = slider1;
+offset = track_id * 256;
+version = gmem[offset + 255];
+
 gfx_r = 0.93; gfx_g = 0.95; gfx_b = 0.65;
 gfx_rect(0,0,gfx_w,gfx_h);
 pad = 6;
 area_w = max(10, gfx_w - pad*2);
+area_h = max(10, gfx_h - pad*2);
+
 compact = (gfx_w < 260) || (gfx_h < 90);
 base_sz = (compact ? 14 : 18) * font_scale;
 sz = min(max(base_sz, 12), 40);
-while (sz > 10 && area_w < (sz*3)) (
-  sz -= 1;
+
+force_big ? (
+  sz = sz;
+) : (
+  while (sz > 10 && area_w < (sz*3)) (
+    sz -= 1;
+  );
 );
+
 gfx_setfont(1, "sans-serif", sz);
+
 strlen(#note_text) > 0 ? (
   gfx_r = 0.31; gfx_g = 0.31; gfx_b = 0.30;
   gfx_x = pad; gfx_y = pad; gfx_drawstr(#note_text);
@@ -168,14 +208,18 @@ strlen(#note_text) > 0 ? (
   gfx_r = 0.8; gfx_g = 0.5; gfx_b = 0.5;
   gfx_x = pad; gfx_y = pad; gfx_drawstr("No saved note for this track");
 );
-]], safe, scale)
+]]
+
+  local existingContent = readFile(jsfxPath)
+  if existingContent == jsfx then
+    return true, jsfxPath
+  end
+  
   if not isDirWritable(jsfxPath) then
-    logError("JSFX path not writable " .. jsfxPath)
     return false, 'Cannot create JSFX file'
   end
   local f, ferr = io.open(jsfxPath, 'w')
   if not f then
-    logError("Cannot create JSFX file at " .. jsfxPath .. ": " .. tostring(ferr))
     return false, 'Cannot create JSFX file'
   end
   f:write(jsfx)
@@ -183,48 +227,55 @@ strlen(#note_text) > 0 ? (
   return true, jsfxPath
 end
 
--- Track helpers
-local function deleteExistingJSFX(track)
-  local fxCount = reaper.TrackFX_GetCount(track)
-  for i = fxCount - 1, 0, -1 do
-    local _, fxName = reaper.TrackFX_GetFXName(track, i, '')
-    if fxName and (fxName:find('FloopNoteReader') or fxName:find('Floop Note Reader')) then
-      reaper.TrackFX_Delete(track, i)
-    end
+-- Track ID & gmem synchronization
+local function getTrackID(track)
+  local retval, id_str = reaper.GetSetMediaTrackInfo_String(track, "P_EXT:FLOOP_NOTE_ID", "", false)
+  if retval and id_str ~= "" then
+    return tonumber(id_str)
+  else
+    local _, max_id_str = reaper.GetProjExtState(0, "FloopScratchpad", "MaxTrackID")
+    local new_id = (tonumber(max_id_str) or 0) + 1
+    reaper.SetProjExtState(0, "FloopScratchpad", "MaxTrackID", tostring(new_id))
+    reaper.GetSetMediaTrackInfo_String(track, "P_EXT:FLOOP_NOTE_ID", tostring(new_id), true)
+    return new_id
   end
 end
 
-local function addJSFXToTrack(track)
-  local fxIndex = reaper.TrackFX_AddByName(track, 'FloopNoteReader.jsfx', false, -1)
-  if fxIndex >= 0 then
-    reaper.TrackFX_SetNamedConfigParm(track, fxIndex, 'ui_embed', '1')
-    return true
+local function writeNoteToGmem(track_id, noteContent, fontScale, forceLarge)
+  reaper.gmem_attach("FloopScratchpad")
+  local offset = track_id * 256
+  local safeNote = noteContent or ""
+  if #safeNote > 200 then safeNote = safeNote:sub(1, 200) .. "..." end
+  local len = #safeNote
+  reaper.gmem_write(offset, len)
+  for i = 1, len do
+    reaper.gmem_write(offset + i, string.byte(safeNote, i))
   end
-  return false
+  reaper.gmem_write(offset + 250, fontScale or 1.30)
+  reaper.gmem_write(offset + 251, forceLarge and 1 or 0)
+  
+  local ver = reaper.gmem_read(offset + 255)
+  reaper.gmem_write(offset + 255, (ver + 1) % 1000000)
 end
 
--- Load notes with fallback and migration handling
+-- Data initialization
 local function readNotesWithFallback()
   local primary = getNotesFilePath()
   local c = readFile(primary)
   if c and c:match("%S") then return c end
   
-  -- Check whether notes must be migrated from the unsaved location
   local projectPath = reaper.GetProjectPath("")
   if projectPath ~= "" then
-    -- Project is saved: migrate notes from the unsaved location if present
     local docs = joinPath(getSystemHome(), "Documents")
     local reaperMedia = joinPath(docs, "REAPER Media")
     local unsavedPath = joinPath(reaperMedia, "unsaved_project_notes.txt")
     local unsavedContent = readFile(unsavedPath)
     
     if unsavedContent and unsavedContent:match("%S") then
-      -- Preserve all notes from the unsaved project and migrate them to the project location
       local file = io.open(primary, "w")
       if file then
         file:write(unsavedContent)
         file:close()
-        -- Backup unsaved notes with timestamp before deletion
         local ts = os.date('%Y%m%d_%H%M%S')
         local backup = joinPath(reaperMedia, 'unsaved_project_notes.bak.' .. ts .. '.txt')
         local bf = io.open(backup, 'w')
@@ -234,17 +285,14 @@ local function readNotesWithFallback()
       end
     end
     
-    -- Legacy fallback: older versions saved to Desktop on first save
     local desktop = joinPath(getSystemHome(), "Desktop")
     local legacyPath = joinPath(desktop, "unsaved_project_notes.txt")
     local legacyContent = readFile(legacyPath)
     if legacyContent and legacyContent:match("%S") then
-      -- Preserve all legacy notes and migrate them to the project location
       local file = io.open(primary, "w")
       if file then
         file:write(legacyContent)
         file:close()
-        -- Backup legacy unsaved notes with timestamp before deletion
         local ts = os.date('%Y%m%d_%H%M%S')
         local backup = joinPath(desktop, 'unsaved_project_notes.bak.' .. ts .. '.txt')
         local bf = io.open(backup, 'w')
@@ -254,7 +302,6 @@ local function readNotesWithFallback()
       end
     end
     
-    -- Ensure project notes file exists, even if there is nothing to migrate
     if not c then
       local f = io.open(primary, "w")
       if f then f:write(""); f:close() end
@@ -262,14 +309,12 @@ local function readNotesWithFallback()
     end
     return c or ""
   else
-    -- Project not saved yet: use fallback locations
     local docs = joinPath(getSystemHome(), "Documents")
     local reaperMedia = joinPath(docs, "REAPER Media")
     local fallback = joinPath(reaperMedia, "unsaved_project_notes.txt")
     local fc = readFile(fallback)
     if fc and fc:match("%S") then return fc end
     
-    -- Legacy fallback: older versions saved unsaved notes to Desktop on first save
     local desktop = joinPath(getSystemHome(), "Desktop")
     local legacy = joinPath(desktop, "unsaved_project_notes.txt")
     local lc = readFile(legacy)
@@ -280,19 +325,32 @@ local function readNotesWithFallback()
   return ""
 end
 
--- Refresh JSFX note readers across all tracks
+-- Refresh execution
 local function refreshAll()
   local notes = readNotesWithFallback()
+  
+  local ok = createStaticJSFXFile()
+  if not ok then return end
+  
   local total = reaper.CountTracks(0)
+  
   for t = 0, total - 1 do
     local tr = reaper.GetTrack(0, t)
     local guid = reaper.GetTrackGUID(tr)
     local note = getNoteForGUID(notes, guid)
     local scale = getFontScaleForGUID(notes, guid)
-    deleteExistingJSFX(tr)
+    
     if note and note:match('%S') then
-      local ok = select(1, createJSFXFile(note, scale))
-      if ok then addJSFXToTrack(tr) end
+      local track_id = getTrackID(tr)
+      writeNoteToGmem(track_id, note, scale, false)
+      
+      local fxCount = reaper.TrackFX_GetCount(tr)
+      for i = 0, fxCount - 1 do
+        local _, fxName = reaper.TrackFX_GetFXName(tr, i, '')
+        if fxName and (fxName:find('FloopNoteReader') or fxName:find('Floop Note Reader')) then
+          reaper.TrackFX_SetParam(tr, i, 0, track_id)
+        end
+      end
     end
   end
   reaper.TrackList_AdjustWindows(false)
