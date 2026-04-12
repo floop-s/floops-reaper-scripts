@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="f90b387474c27174205a9447cd77ca6ca80fec3d">
+<index version="1" name="Floop's Reaper Scripts" commit="514e10eb5a9e6247f017836474d8390547aa327a">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -194,9 +194,9 @@ Tweak: Increased 'Slow' spectrum averaging time to ~5000ms.]]></changelog>
 
 {\pard \ql \f0 \sa180 \li0 \fi0 Per-track notes system for REAPER.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Allows writing, viewing, and managing notes for each track. Notes are automatically saved and recalled when switching tracks.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 V2.0: Massive update! No more background startup script needed. You can safely remove the old Floop Startup script from your SWS Startup actions if you had it configured.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Requires:\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab ReaImGui (ReaTeam Extensions repository), v0.10.2 or newer\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab SWS/S&M extension\sa180\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab ReaImGui (ReaTeam Extensions repository), v0.10.2 or newer\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Dynamically generates a companion JSFX (FloopNoteReader) to display notes in the Track Control Panel.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Keywords: notes, track, text, workflow.\par}
 }
@@ -225,6 +225,16 @@ Tweak: Increased 'Slow' spectrum averaging time to ~5000ms.]]></changelog>
 + Note: Notes written in unsaved projects cannot currently be migrated. Please save your project before adding notes.]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/f90b387474c27174205a9447cd77ca6ca80fec3d/scripts/floop-scratchpad/floop-scratchpad.lua</source>
         <source main="main" file="floop-startup-refresh.lua">https://github.com/floop-s/floops-reaper-scripts/raw/f90b387474c27174205a9447cd77ca6ca80fec3d/scripts/floop-scratchpad/floop-startup-refresh.lua</source>
+      </version>
+      <version name="2.0.0" author="Floop-s" time="2026-04-12T09:16:10Z">
+        <changelog><![CDATA[+ V2.0: Massive update! No more background startup script needed.
++ Added JSFX Background Color Picker.
++ Added 'Migrate V1' button to safely import legacy .txt notes.
++ Added dynamic UI Theme that matches REAPER's interface.
++ Added Ctrl+S / Cmd+S keyboard shortcut for instant saving.
++ Native text word-wrapping for JSFX and DPI/Retina support.
++ Full rewrite using ProjExtState (no external files needed).]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/514e10eb5a9e6247f017836474d8390547aa327a/scripts/floop-scratchpad/floop-scratchpad.lua</source>
       </version>
     </reapack>
   </category>
