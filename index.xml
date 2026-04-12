@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="514e10eb5a9e6247f017836474d8390547aa327a">
+<index version="1" name="Floop's Reaper Scripts" commit="47b2e6a877415add7332d46a16828baa9a54624e">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -235,6 +235,17 @@ Tweak: Increased 'Slow' spectrum averaging time to ~5000ms.]]></changelog>
 + Native text word-wrapping for JSFX and DPI/Retina support.
 + Full rewrite using ProjExtState (no external files needed).]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/514e10eb5a9e6247f017836474d8390547aa327a/scripts/floop-scratchpad/floop-scratchpad.lua</source>
+      </version>
+      <version name="2.0.1" author="Floop-s" time="2026-04-12T17:28:04Z">
+        <changelog><![CDATA[+ V2.0.1: Massive update! No more background startup script needed.
++ Added JSFX Background Color Picker.
++ Added 'Migrate V1' button to safely import legacy .txt notes.
++ Added dynamic UI Theme that matches REAPER's interface.
++ Added Ctrl+S / Cmd+S keyboard shortcut for instant saving.
++ Native text word-wrapping for JSFX and DPI/Retina support.
++ Full rewrite using ProjExtState (no external files needed).
++ Hotfix: UI layout adjustment for the Help modal text wrapping.]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/47b2e6a877415add7332d46a16828baa9a54624e/scripts/floop-scratchpad/floop-scratchpad.lua</source>
       </version>
     </reapack>
   </category>
