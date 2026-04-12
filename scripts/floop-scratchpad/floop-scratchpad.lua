@@ -1,16 +1,17 @@
 -- Floop Scratchpad - Per-track notes system for REAPER.
 -- @description Floop Scratchpad: per-track notes system
--- @version 2.0.0
+-- @version 2.0.1
 -- @author Floop-s
 -- @license GPL-3.0
 -- @changelog
---   + V2.0: Massive update! No more background startup script needed.
+--   + V2.0.1: Massive update! No more background startup script needed.
 --   + Added JSFX Background Color Picker.
 --   + Added 'Migrate V1' button to safely import legacy .txt notes.
 --   + Added dynamic UI Theme that matches REAPER's interface.
 --   + Added Ctrl+S / Cmd+S keyboard shortcut for instant saving.
 --   + Native text word-wrapping for JSFX and DPI/Retina support.
 --   + Full rewrite using ProjExtState (no external files needed).
+--   + Hotfix: UI layout adjustment for the Help modal text wrapping.
 -- @about
 --   Per-track notes system for REAPER.
 --
@@ -1227,6 +1228,8 @@ local function renderUI()
 
     local flags = reaper.ImGui_WindowFlags_NoResize() | reaper.ImGui_WindowFlags_NoMove()
     if reaper.ImGui_BeginPopupModal(ctx, 'Help Guide', true, flags) then
+      reaper.ImGui_PushTextWrapPos(ctx, 0.0)
+      
       reaper.ImGui_Text(ctx, '📖 Floop Scratchpad - User Guide')
       reaper.ImGui_Separator(ctx)
       reaper.ImGui_Spacing(ctx)
@@ -1264,6 +1267,8 @@ local function renderUI()
       reaper.ImGui_BulletText(ctx, 'JSFX now features native Word-Wrapping for dynamic resizing!')
       reaper.ImGui_BulletText(ctx, 'Each track has its own note, color, and font settings')
       reaper.ImGui_BulletText(ctx, 'Toggle "UI Theme" at the top right to match your REAPER colors.')
+      
+      reaper.ImGui_PopTextWrapPos(ctx)
       
       reaper.ImGui_Spacing(ctx)
       reaper.ImGui_Separator(ctx)

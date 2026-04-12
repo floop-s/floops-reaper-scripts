@@ -1,6 +1,6 @@
 # Floop Scratchpad
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-2.0.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-2.0.1-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 **Track Notes System for REAPER.**
 
@@ -90,7 +90,10 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 
 ## Changelog
 
-### v2.0.0 (Latest)
+### v2.0.1 (Hotfix)
+* **UI Hotfix:** Adjusted text wrapping layout inside the Help Guide modal.
+
+### v2.0.0
 *   **Major Architecture Rewrite**: Notes are now saved natively in the REAPER project file (`.rpp`) via `ProjExtState`.
 *   **Removed**: `Floop Startup Refresh.lua` is obsolete. The script now handles offline sync instantly upon opening the UI.
 *   **Added**: JSFX Background Color Picker (saved per-track).
