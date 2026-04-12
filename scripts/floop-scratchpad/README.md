@@ -1,6 +1,6 @@
 # Floop Scratchpad
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.3.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-2.0.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 **Track Notes System for REAPER.**
 
@@ -8,49 +8,46 @@
 ## Overview
 
 **Floop Scratchpad** is a REAPER script that lets you write, view, and manage notes per track directly in your DAW.
-Notes are automatically saved and recalled when switching tracks, keeping project annotations organized and accessible.
-The script generates a companion JSFX (FloopNoteReader) that displays your notes in the Track/Mixer panels when embedding is enabled.
+With the massive **V2.0 update**, all notes are saved natively inside your `.rpp` project file using `ProjExtState`, completely eliminating the need for external text files or background startup scripts.
+The script generates a companion JSFX (FloopNoteReader) that displays your notes in the Track/Mixer panels when embedding is enabled, complete with custom background colors and native word-wrapping.
 
 ## Screenshots
-
 <p align="center"> 
-  <br> 
-  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-s1-v1.2.3.png" target="_blank"> 
-    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-s1-v1.2.3.png" width="450" style="border: 1px solid #202121ff;" alt="Click to zoom in"> 
-  </a> 
-  <br> 
-   <br> 
-  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-s2-v1.2.3.png" target="_blank"> 
-    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-s2-v1.2.3.png" width="450" style="border: 1px solid #202121ff;" alt="Click to zoom in"> 
-  </a> 
-  <br> 
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-v2.png" target="_blank">
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-v2.png" width="700" style="border: 1px solid #27a086ff;" alt="Floop Hunter Framework Action">
+  </a>
 </p>
 
-## Key Features
+<p align="center">
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-v2-original theme.png" target="_blank">
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-v2-original theme.png" width="48%" style="border: 1px solid #27a086ff; margin-right: 1%;" alt="Floop Scrtachpad V2 Original Theme">
+  </a>
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-v2-dynamic-theme.png" target="_blank">
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-scratchpad-v2-dynamic-theme.png" width="48%" style="border: 1px solid #27a086ff;" alt="Floop Scrtachpad V2 Dynamic Theme">
+  </a>
+</p>
 
-*   **Per-Track Notes**: Write and store notes tied to each track.
-*   **Auto-Load**: Notes load automatically when switching selected tracks.
-*   **JSFX Note Reader**: Dynamically generates **FloopNoteReader.jsfx** to display notes in TCP/MCP using high-performance global memory (`gmem`).
-*   **Autosave**: Avoids losing edits when switching tracks.
-*   **Duplicate-Safe**: Prevents multiple JSFX instances on the same track.
-*   **Compact UI**: Rounded sliders, white grab, flicker-free font scaling.
-*   **Backup**: Creates a `.bak` file when clearing notes.
-*   **Cross-Platform**: Windows, Mac, Linux.
 
-> **⚠️ Important Note on Unsaved Projects**: Notes written while a project is "unsaved" cannot currently be migrated when the project is saved for the first time. **Please save your project (.rpp) before adding notes.**
+
+## Key Features (V2)
+
+*   **Native Project Saving**: Notes are stored directly inside your `.rpp` file. No external `.txt` files to manage or lose.
+*   **Dynamic UI Theme**: Toggle "UI Theme" to instantly match Floop Scratchpad's colors with your current REAPER theme.
+*   **JSFX Background Color Picker**: Choose a custom background color for the JSFX reader on a per-track basis.
+*   **Native Word-Wrapping**: The JSFX reader now dynamically wraps text to fit your Track Control Panel width.
+*   **High-DPI / Retina Ready**: Crisp, clear fonts on 4K and Mac Retina displays.
+*   **Migrate V1**: One-click button to safely import your old external text notes into the new V2 format.
+*   **Zero Background Overhead**: The old startup background script is **no longer needed** and can be safely removed from your SWS actions.
 
 ## Requirements
 
 *   **REAPER v7.5x** or later.
 *   **ReaImGui**: "ReaScript binding for Dear ImGui" installed via ReaPack. **Minimum version required: 0.10.2+**.
-*   **SWS/S&M Extension**: Required for automatic project startup refresh.
 
 ## Compatibility
 
-*   **REAPER**: Developed and tested on **v7.5x+** (Windows).
-*   **Operating Systems**:
-    *   **Windows**: Fully tested and supported.
-    *   **macOS / Linux**: Designed with cross-platform compatibility in mind (using system-agnostic path handling), but not personally tested on these systems. Feedback is welcome!
+*   **REAPER**: Developed and tested on **v7.5x+**.
+*   **Operating Systems**: Windows, macOS, and Linux (Fully Cross-Platform).
 
 ## Installation
 
@@ -60,9 +57,7 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 
 1.  **Install Prerequisites**:
     *   Open **Extensions > ReaPack > Browse Packages**.
-    *   Search for and install:
-        *   `ReaScript binding for Dear ImGui`
-        *   `SWS/S&M Extension`
+    *   Search for and install: `ReaScript binding for Dear ImGui`
     *   **Restart REAPER**.
 
 2.  **Add the Repository**:
@@ -77,42 +72,38 @@ The easiest way to install and keep the script updated is via **ReaPack**.
     *   Right-click > **Install**.
     *   Click **Apply**.
 
-### Method 2: Manual Installation
-
-1.  **Install Prerequisites**:
-    *   Follow step 1 from the ReaPack method above to install `ReaImGui` and `SWS`.
-
-2.  **Install the Script**:
-    *   Download the script files.
-    *   Copy `Floop Scratchpad.lua` and `Floop Startup Refresh.lua` to your REAPER Scripts folder (usually `AppData\Roaming\REAPER\Scripts` on Windows).
-
-3.  **Load the Action**:
-    *   Open the Actions List (`?` shortcut).
-    *   Click **New Action > Load ReaScript...**
-    *   Select `Floop Scratchpad.lua`.
+*(Note: If you are updating from V1, you can safely remove `Floop Startup Refresh.lua` from your SWS Project Startup Actions. It is no longer required!)*
 
 ## Usage
 
 1.  **Launch** "Floop Scratchpad" from the Actions List.
 2.  **Select a track**: Its name and GUID appear in the interface.
-3.  **Type notes** and click "Save".
-4.  **Switch tracks** to see notes update automatically.
+3.  **Type notes** and adjust Text Size or Background Color.
+4.  **Save**: Notes auto-save when switching tracks, or you can press **Ctrl+S** / **Cmd+S** to save instantly.
 
 ### Embedding Notes in TCP / MCP
 
-   *   Click "Add JSFX".
-   *   In FX Browser, find `FloopNoteReader`.
+   *   Click "+ Add JSFX" in the script UI.
+   *   In the FX Browser, find `FloopNoteReader`.
    *   Right-click > "Default settings for new instance" > Enable "Show embedded UI in TCP or MCP".
-   *   Future instances will auto-embed.
-
-## Troubleshooting
-
-*   **Embed not showing**: Ensure "Show embedded UI" is checked in the default settings for `FloopNoteReader`.
-*   **Notes not loading**: Check if `SWS/S&M` is installed properly.
+   *   Future instances will automatically embed themselves in the track panel!
 
 ## Changelog
 
-### v1.3.0 (2026-04-10)
+### v2.0.0 (Latest)
+*   **Major Architecture Rewrite**: Notes are now saved natively in the REAPER project file (`.rpp`) via `ProjExtState`.
+*   **Removed**: `Floop Startup Refresh.lua` is obsolete. The script now handles offline sync instantly upon opening the UI.
+*   **Added**: JSFX Background Color Picker (saved per-track).
+*   **Added**: Dynamic UI Theme toggle to match REAPER's native colors.
+*   **Added**: "Migrate V1" button to easily import legacy `.txt` files into the new native format.
+*   **Added**: Native EEL2 word-wrapping engine in the JSFX. Text now dynamically flows and resizes when shrinking the TCP.
+*   **Added**: High-DPI / Retina display support for the JSFX graphics.
+*   **Added**: `Ctrl+S` / `Cmd+S` keyboard shortcut for instant saving.
+*   **Fixed**: Critical track duplication bug where copied tracks shared the same JSFX memory buffer.
+*   **Fixed**: JSFX file I/O overhead on Windows that caused continuous disk writing.
+*   **Improved**: Complete UI overhaul with constrained window scaling, adaptive modals, and cleaner layouts.
+
+### v1.3.0 (Legacy)
 *   **Added**: Global Memory (gmem) architecture for JSFX readers, vastly improving performance and reducing disk I/O.
 *   **Fixed**: Resolved a bug where all JSFX instances shared the same text across different tracks.
 *   **Fixed**: Background startup script now automatically restores volatile gmem notes on project load.
