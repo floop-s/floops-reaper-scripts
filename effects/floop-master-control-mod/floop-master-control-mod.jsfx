@@ -20,15 +20,15 @@ desc:Floop Master Control (Modular)
 //   Keywords: LUFS, true peak, spectrum, spectrogram, phase, stereo, monitor, mastering.
 // @provides
 //   [effect] floop-master-control-mod.jsfx
-//   [data] modules/mod_meter.jsfx-inc
-//   [data] modules/mod_spectrum.jsfx-inc
-//   [data] modules/mod_stereo.jsfx-inc
-//   [data] modules/mod_phase.jsfx-inc
-//   [data] modules/mod_correlometer.jsfx-inc
-//   [data] modules/mod_oscilloscope.jsfx-inc
-//   [data] modules/mod_monitor.jsfx-inc
-//   [data] modules/mod_vumeter.jsfx-inc
-//   [data] modules/mod_spectrogram.jsfx-inc
+//   modules/mod_meter.jsfx-inc
+//   modules/mod_spectrum.jsfx-inc
+//   modules/mod_stereo.jsfx-inc
+//   modules/mod_phase.jsfx-inc
+//   modules/mod_correlometer.jsfx-inc
+//   modules/mod_oscilloscope.jsfx-inc
+//   modules/mod_monitor.jsfx-inc
+//   modules/mod_vumeter.jsfx-inc
+//   modules/mod_spectrogram.jsfx-inc
 
 import modules/mod_meter.jsfx-inc
 import modules/mod_spectrum.jsfx-inc
