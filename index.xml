@@ -475,60 +475,63 @@ Animated floating UI with debounced search.]]></changelog>
 \widowctrl\hyphauto
 
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Floop\u8217's REAPER Scripts\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 This repository contains a collection of {\b JSFX effects} and {\b Lua scripts} for {\b REAPER}, focused on audio processing, monitoring, and workflow enhancement.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 All tools are released as {\b free and open-source software}.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This repository contains JSFX effects and Lua scripts for REAPER.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The tools focus on workflow enhancement, audio processing, and music production utilities.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 All content is released as open-source software under the GPLv3 license.\par}
 {\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Repository Structure\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 The tools are organized into the following directories:\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 scripts/}: Lua scripts\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 effects/}: JSFX effects\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Each tool is contained in its own folder and typically includes:\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab the script or effect file ({\f1 .lua} or {\f1 .jsfx})\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab a dedicated {\f1 README.md} with usage instructions and details\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 This structure allows the repository to be used both:\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab via {\b ReaPack}\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab and by manually downloading individual tools from GitHub\sa180\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 scripts/} - Lua scripts\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 effects/} - JSFX effects\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Each tool is contained in its own folder and includes:\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab source file ({\f1 .lua} or {\f1 .jsfx})\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab dedicated README with usage details\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The repository can be used via ReaPack or manual installation.\par}
 {\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Installation\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Automatic Installation (Recommended \u8211- ReaPack)\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 1.\tx360\tab Open {\b REAPER}\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 2.\tx360\tab Go to {\b Extensions \u8594 ? ReaPack \u8594 ? Import Repositories\u8230 ?}\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 3.\tx360\tab Paste the following URL:\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 {\f1 https://github.com/floop-s/floops-reaper-scripts/raw/main/index.xml}\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 4.\tx360\tab The repository will appear in ReaPack. Browse and install scripts or effects as needed.\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 ReaPack (recommended)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 1.\tx360\tab Open REAPER\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 2.\tx360\tab Go to Extensions \u8594 ? ReaPack \u8594 ? Import Repositories\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 3.\tx360\tab Add:\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \f1 https://github.com/floop-s/floops-reaper-scripts/raw/main/index.xml\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 4.\tx360\tab Install tools from ReaPack browser\sa180\par}
 {\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Manual Installation\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 1.\tx360\tab Download the repository\sa180\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Clone it with Git or download it as a ZIP file.\sa180\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 2.\tx360\tab Locate the REAPER resource path\sa180\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab In REAPER, go to {\b Options \u8594 ? Show REAPER resource path in explorer / finder}\sa180\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 3.\tx360\tab Install the files\sa180\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Lua scripts}: Copy {\f1 .lua} files into the {\f1 Scripts} folder.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b JSFX effects}: Copy {\f1 .jsfx} files into the {\f1 Effects} folder.\sa180\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 4.\tx360\tab Refresh REAPER\sa180\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Lua scripts}: Open the {\b Actions List} ({\f1 ?}) \u8594 ? {\b New Action \u8594 ? Load ReaScript\u8230 ?}\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b JSFX effects}: Open the FX Browser and press {\b F5} to rescan effects.\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Refer to each tool\u8217's own {\f1 README.md} for specific usage instructions and requirements.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Manual installation\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 1.\tx360\tab Download or clone the repository\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 2.\tx360\tab Open REAPER \u8594 ? Options \u8594 ? Show REAPER resource path\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 3.\tx360\tab Copy files into:\sa180\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 .lua} \u8594 ? Scripts/\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 .jsfx} \u8594 ? Effects/\sa180\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 4.\tx360\tab Refresh REAPER (Actions List for scripts, F5 for JSFX)\sa180\par}
+{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Featured Tools\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Workflow & Editing\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Scratchpad - notes attached to tracks\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Sheet Reader - PDFs and images inside REAPER\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Search - track navigation and filtering\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Studio Trainer - instrument practice with adaptive BPM\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop ESS Hunter / Hunter Framework - detection and marking system for sibilance, plosives, and breath events for dialogue editing\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Music Tools\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Groove-A-Thor - groove extraction, transfer, and generation\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floopa Station - live looping tool\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Audio Processing\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Chrominator - stereo saturation\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Master Control (Modular) - modular metering and analysis system\sa180\par}
 {\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Compatibility\par}
-{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab {\b Primary platform:} Developed and tested on {\b Windows}.\par}
-{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab {\b macOS / Linux:} Some scripts are designed to be cross-platform, but not all tools are tested on these systems. Compatibility and stability are not guaranteed. Feedback is welcome.\sa180\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Primary platform: Windows (tested)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab macOS / Linux: partially supported, not fully tested\sa180\par}
 {\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Support & Expectations\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 All scripts and effects are provided {\b as-is}.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab No guaranteed support is provided.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Bug reports and feedback are welcome, but responses may be limited.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Tools are tested only on systems I have direct access to.\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 This project is maintained in my spare time.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 If these tools save you time, a coffee is always appreciated. \u9749 ?\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Support\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The project is maintained in spare time.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Tools are provided as-is. Feedback is welcome but not guaranteed to be addressed.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If useful, support is appreciated:\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 {\field{\*\fldinst{HYPERLINK "https://ko-fi.com/floopsreaperscripts"}}{\fldrslt{\ul
 {\cf1 [image: https://img.shields.io/badge/Ko--fi-Support%20Development-orange?style=flat-square&logo=ko-fi]\cf0}
 }}}
 \par}
 {\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 License\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 All contents of this repository are released under the {\b GNU General Public License v3.0 (GPL-3.0)}.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 See the {\f1 LICENSE} file for full license details.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 GPLv3 - see LICENSE file for details.\par}
 }
 ]]></description>
     <link rel="website">https://www.floratarantino.com/floop-reaper-scripts/</link>
