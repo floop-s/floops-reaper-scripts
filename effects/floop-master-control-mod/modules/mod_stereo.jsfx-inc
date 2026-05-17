@@ -1,0 +1,119 @@
+@init
+
+// Floop Master Control - Stereo Analyzer (Goniometer) Module
+// @author Floop-s
+
+function mod_stereo_init(slot_id, mem_start, mem_size) local(ptr) (
+  ptr = mem_start;
+  this.slot_id = slot_id;
+  this.mem = mem_start;
+  
+  this.buf_l = ptr; ptr += 8192;
+  this.buf_r = ptr; ptr += 8192;
+  this.buf_offset = 0;
+  this.last_draw_offset = 0;
+  
+  this.gonio_decay = 0.95;
+  this.gonio_img = 10 + slot_id; // Unique image ID per slot (11-17)
+  this.gonio_img_w = 0;
+  this.gonio_img_h = 0;
+  
+  memset(this.buf_l, 0, 8192);
+  memset(this.buf_r, 0, 8192);
+);
+
+function mod_stereo_reset() (
+  this.buf_offset = 0;
+  this.last_draw_offset = 0;
+  memset(this.buf_l, 0, 8192);
+  memset(this.buf_r, 0, 8192);
+  this.gonio_img_w = 0;
+  this.gonio_img_h = 0;
+);
+
+function mod_stereo_sample(l, r) (
+  this.buf_l[this.buf_offset] = l;
+  this.buf_r[this.buf_offset] = r;
+  this.buf_offset = (this.buf_offset + 1) & 8191; // 8192 is a power of 2
+);
+
+function mod_stereo_gfx(x, y, w, h, scale) local(title_h, top_pad, bottom_pad, gonio_x, gonio_y, gonio_w, gonio_h, gcx, gcy, gscale, g_sz, first_point, i, idx, s_l, s_r, gx, gy, xx, yy) (
+  // Background
+  gfx_r=c_panel_r; gfx_g=c_panel_g; gfx_b=c_panel_b; gfx_a=1;
+  gfx_rect(x, y, w, h);
+  gfx_r=c_panel_edge_r; gfx_g=c_panel_edge_g; gfx_b=c_panel_edge_b; gfx_a=1;
+  gfx_line(x, y, x+w, y);
+  gfx_line(x, y+h, x+w, y+h);
+  gfx_line(x, y, x, y+h);
+  gfx_line(x+w, y, x+w, y+h);
+  
+  title_h = 0;
+  top_pad = max(4, floor(6 * scale));
+  bottom_pad = max(4, floor(6 * scale));
+
+  gonio_x = x + floor(10 * scale);
+  gonio_y = y + top_pad;
+  gonio_w = w - floor(20 * scale);
+  gonio_h = h - top_pad - bottom_pad;
+  
+  gonio_w < 1 ? gonio_w = 1;
+  gonio_h < 1 ? gonio_h = 1;
+
+  (this.gonio_img_w != floor(gonio_w) || this.gonio_img_h != floor(gonio_h)) ? (
+    this.gonio_img_w = max(1, floor(gonio_w));
+    this.gonio_img_h = max(1, floor(gonio_h));
+    gfx_setimgdim(this.gonio_img, this.gonio_img_w, this.gonio_img_h);
+    gfx_dest = this.gonio_img;
+    gfx_r=c_panel_r; gfx_g=c_panel_g; gfx_b=c_panel_b; gfx_a=1;
+    gfx_rect(0, 0, this.gonio_img_w, this.gonio_img_h, 1);
+  );
+
+  gfx_dest = this.gonio_img;
+  gfx_r=c_panel_r; gfx_g=c_panel_g; gfx_b=c_panel_b; gfx_a=1 - this.gonio_decay;
+  gfx_rect(0, 0, this.gonio_img_w, this.gonio_img_h, 1);
+
+  gcx = this.gonio_img_w * 0.5;
+  gcy = this.gonio_img_h * 0.5;
+  gscale = min(this.gonio_img_w, this.gonio_img_h) * 0.48;
+
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.15;
+  g_sz = gscale * 0.7; 
+  gfx_line(gcx - g_sz, gcy + g_sz, gcx + g_sz, gcy - g_sz); 
+  gfx_line(gcx - g_sz, gcy - g_sz, gcx + g_sz, gcy + g_sz); 
+
+  gfx_r=0.35; gfx_g=0.90; gfx_b=0.55; gfx_a=0.90;
+  
+  // Calculate how many samples to draw
+  draw_n = (this.buf_offset - this.last_draw_offset) & 8191;
+  draw_n > 8192 ? draw_n = 8192; // Safely cap
+  
+  first_point = 1;
+  idx = this.last_draw_offset;
+  loop(draw_n, 
+    s_l = this.buf_l[idx];
+    s_r = this.buf_r[idx];
+    gx = (s_l - s_r) * 0.707;
+    gy = (s_l + s_r) * 0.707;
+    
+    xx = gcx + gx * gscale;
+    yy = gcy - gy * gscale;
+    
+    first_point ? (
+      gfx_x = xx; gfx_y = yy; first_point = 0;
+    ) : (
+      gfx_lineto(xx, yy, 1); 
+    );
+    idx = (idx + 1) & 8191;
+  );
+  this.last_draw_offset = this.buf_offset;
+
+  gfx_dest = -1;
+  gfx_x = gonio_x;
+  gfx_y = gonio_y;
+  gfx_a = 1;
+  gfx_blit(this.gonio_img, 1, 0);
+
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.10;
+  gfx_line(gonio_x + gonio_w/2, gonio_y, gonio_x + gonio_w/2, gonio_y + gonio_h);
+  gfx_line(gonio_x, gonio_y + gonio_h/2, gonio_x + gonio_w, gonio_y + gonio_h/2);
+);

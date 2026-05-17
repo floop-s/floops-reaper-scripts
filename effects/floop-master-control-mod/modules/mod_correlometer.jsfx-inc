@@ -1,0 +1,239 @@
+@init
+
+// Floop Master Control - Multi-band Phase Correlation Module
+// @author Floop-s
+
+function mod_correlometer_init(slot_id, mem_start, mem_size) local(ptr, i) (
+  ptr = mem_start;
+  this.slot_id = slot_id;
+  this.mem = mem_start;
+  
+  this.fft_size = 4096;
+  this.fft_overlap_factor = 4;
+  this.fft_step_size = this.fft_size / this.fft_overlap_factor;
+  this.fft_bins = this.fft_size / 2;
+  
+  // Align pointer to prevent FFT buffers from crossing 65536 element boundaries
+  this.ptr_rem = ptr % (this.fft_size * 2);
+  this.ptr_rem > 0 ? ptr += (this.fft_size * 2) - this.ptr_rem;
+  
+  this.fft_buf = ptr; ptr += this.fft_size * 2;
+  this.fft_buf_s = ptr; ptr += this.fft_size * 2;
+  this.corr_spec_buf = ptr; ptr += this.fft_bins;
+  this.mag_spec_buf = ptr; ptr += this.fft_bins;
+  this.yy_spec_buf = ptr; ptr += this.fft_bins;
+  this.win_buf = ptr; ptr += this.fft_size;
+  
+  this.fft_ring_size = 8192; // Power of 2 for bitwise masking
+  this.fft_ring_mask = this.fft_ring_size - 1;
+  this.fft_ring_buf_l = ptr; ptr += this.fft_ring_size;
+  this.fft_ring_buf_r = ptr; ptr += this.fft_ring_size;
+  
+  this.fft_ring_wr = 0;
+  this.fft_proc_end = 0;
+  this.fft_filled = 0;
+  
+  this.inv_log10 = 1/log(10);
+  this.inv_log2 = 1/log(2);
+  this.log_1000 = log(1000);
+  this.corr_gate_p = pow(10, -90 * 0.1);
+  
+  this.win_sum = 0;
+  i = 0;
+  loop(this.fft_size,
+    this.win_buf[i] = 0.5 * (1 - cos(2*$pi*i/(this.fft_size-1)));
+    this.win_sum += this.win_buf[i];
+    i += 1;
+  );
+  
+  memset(this.corr_spec_buf, 0, this.fft_bins);
+  memset(this.mag_spec_buf, 0, this.fft_bins);
+  memset(this.yy_spec_buf, 0, this.fft_bins);
+  memset(this.fft_ring_buf_l, 0, this.fft_ring_size);
+  memset(this.fft_ring_buf_r, 0, this.fft_ring_size);
+  memset(this.fft_buf, 0, this.fft_size * 2);
+  memset(this.fft_buf_s, 0, this.fft_size * 2);
+  
+  this.smoothing_oct = 1; // 1/12 default
+  this.oct_smooth = 0;
+);
+
+function mod_correlometer_reset() (
+  memset(this.fft_ring_buf_l, 0, this.fft_ring_size);
+  memset(this.fft_ring_buf_r, 0, this.fft_ring_size);
+  memset(this.fft_buf, 0, this.fft_size * 2);
+  memset(this.fft_buf_s, 0, this.fft_size * 2);
+  this.fft_ring_wr = 0;
+  this.fft_proc_end = 0;
+  this.fft_filled = 0;
+);
+
+function mod_correlometer_block(smoothing) local(mask, delta, r_ptr, si, sw, m, s, s_m_re, s_m_im, s_s_re, s_s_im, s_l_re, s_l_im, s_r_re, s_r_im, s_nom, s_denom, s_corr_val, win_norm, win_norm2, p, xx, yy, xy, a, b) (
+  this.smoothing_oct = smoothing < 0.5 ? 0 : smoothing < 1.5 ? 1 : 2;
+  
+  this.fft_filled >= this.fft_size ? (
+    mask = this.fft_ring_mask;
+    delta = (this.fft_ring_wr - this.fft_proc_end + this.fft_ring_size) & mask;
+    while (delta >= this.fft_step_size) (
+      this.fft_proc_end = (this.fft_proc_end + this.fft_step_size) & mask;
+      delta -= this.fft_step_size;
+      
+      r_ptr = (this.fft_proc_end - this.fft_size + this.fft_ring_size) & mask;
+      
+      si = 0;
+      loop(this.fft_size,
+        sw = this.win_buf[si];
+        
+        m = this.fft_ring_buf_l[r_ptr];
+        s = this.fft_ring_buf_r[r_ptr];
+        
+        this.fft_buf[si*2] = m * sw;
+        this.fft_buf[si*2+1] = 0;
+        this.fft_buf_s[si*2] = s * sw;
+        this.fft_buf_s[si*2+1] = 0;
+        
+        r_ptr = (r_ptr + 1) & mask;
+        si += 1;
+      );
+      
+      fft(this.fft_buf, this.fft_size);
+      fft(this.fft_buf_s, this.fft_size);
+      fft_permute(this.fft_buf, this.fft_size);
+      fft_permute(this.fft_buf_s, this.fft_size);
+      
+      this.fft_buf[1] = 0;
+      this.fft_buf_s[1] = 0;
+      
+      win_norm = 2 / max(0.000000000001, this.win_sum);
+      win_norm2 = win_norm * win_norm;
+
+      si = 0;
+      loop(this.fft_bins,
+        s_l_re = this.fft_buf[si * 2];
+        s_l_im = this.fft_buf[si * 2 + 1];
+        s_r_re = this.fft_buf_s[si * 2];
+        s_r_im = this.fft_buf_s[si * 2 + 1];
+        
+        xy = (s_l_re*s_r_re + s_l_im*s_r_im) * win_norm2;
+        xx = (s_l_re*s_l_re + s_l_im*s_l_im) * win_norm2;
+        yy = (s_r_re*s_r_re + s_r_im*s_r_im) * win_norm2;
+        
+        p = (xx + yy) * 0.5;
+        a = p < (this.corr_gate_p * 4) ? 0.75 : 0.90;
+        b = 1 - a;
+        this.corr_spec_buf[si] = this.corr_spec_buf[si] * a + xy * b;
+        this.mag_spec_buf[si] = this.mag_spec_buf[si] * a + xx * b;
+        this.yy_spec_buf[si] = this.yy_spec_buf[si] * a + yy * b;
+        si += 1;
+      );
+    );
+  );
+);
+
+function mod_correlometer_sample(l, r) (
+  this.fft_ring_buf_l[this.fft_ring_wr] = l;
+  this.fft_ring_buf_r[this.fft_ring_wr] = r;
+  this.fft_ring_wr = (this.fft_ring_wr + 1) & this.fft_ring_mask;
+  this.fft_filled < this.fft_ring_size ? this.fft_filled += 1;
+);
+
+function mod_correlometer_gfx(x, y, w, h, scale) local(title_h, top_pad, bottom_pad, pc_x, pc_y, pc_w, pc_h, f_min, f_max, lf_min, lf_max, lf_den, f, fx, disp_oct, target_oct, mb_x, mb_y, mb_w, mb_h, cy, corr_disp_bins, i, t, lf, f_lo, f_hi, k0, k1, c_sum, c_n, k, c_val, cx, cw, y_target, p_sum, p_avg, wv, xy_sum, xx_sum, yy_sum, denom, w_gate) (
+  // Background
+  gfx_r=c_panel_r; gfx_g=c_panel_g; gfx_b=c_panel_b; gfx_a=1;
+  gfx_rect(x, y, w, h);
+  gfx_r=c_panel_edge_r; gfx_g=c_panel_edge_g; gfx_b=c_panel_edge_b; gfx_a=1;
+  gfx_line(x, y, x+w, y);
+  gfx_line(x, y+h, x+w, y+h);
+  gfx_line(x, y, x, y+h);
+  gfx_line(x+w, y, x+w, y+h);
+  
+  disp_oct = this.smoothing_oct == 0 ? (1/3) : this.smoothing_oct == 1 ? (1/12) : (1/24);
+  target_oct = pow(2, disp_oct * 0.5);
+  this.oct_smooth = (this.oct_smooth == 0) ? target_oct : (this.oct_smooth * 0.9 + target_oct * 0.1);
+
+  title_h = 0;
+  top_pad = max(4, floor(6 * scale));
+  bottom_pad = max(4, floor(6 * scale));
+  pc_x = x + floor(10*scale);
+  pc_y = y + top_pad;
+  pc_w = w - floor(20*scale);
+  pc_h = h - top_pad - bottom_pad;
+  
+  // Title removed to save space
+
+  mb_x = pc_x;
+  mb_y = pc_y;
+  mb_w = pc_w;
+  mb_h = pc_h;
+  mb_w < 1 ? mb_w = 1;
+  mb_h < 1 ? mb_h = 1;
+
+  gfx_r=0.0; gfx_g=0.0; gfx_b=0.0; gfx_a=0.3;
+  gfx_rect(mb_x, mb_y, mb_w, mb_h);
+  
+  cy = mb_y + mb_h * 0.5;
+
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.2;
+  gfx_line(mb_x, cy, mb_x + mb_w, cy);
+
+  f_min = 20; f_max = srate * 0.5;
+  lf_min = log(f_min); lf_max = log(f_max); lf_den = lf_max - lf_min;
+  
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.1;
+  f = 100;
+  while(f < f_max) (
+    fx = mb_x + (log(f) - lf_min) / lf_den * mb_w;
+    gfx_line(fx, mb_y, fx, mb_y + mb_h);
+    f *= 10;
+  );
+
+  corr_disp_bins = floor(mb_w);
+  corr_disp_bins > 600 ? corr_disp_bins = 600;
+  corr_disp_bins < 100 ? corr_disp_bins = 100;
+  
+  i = 0;
+  loop(corr_disp_bins,
+    t = i / (corr_disp_bins - 1);
+    lf = lf_min + t * lf_den;
+    f = exp(lf);
+    
+    f_lo = f / this.oct_smooth;
+    f_hi = f * this.oct_smooth;
+    k0 = floor(f_lo * this.fft_size / srate);
+    k1 = ceil(f_hi * this.fft_size / srate);
+    k0 < 0 ? k0 = 0; k1 > this.fft_bins - 1 ? k1 = this.fft_bins - 1; k1 < k0 ? k1 = k0;
+    
+    xy_sum = 0; xx_sum = 0; yy_sum = 0; c_n = 0;
+    k = k0;
+    loop(k1 - k0 + 1,
+       xy_sum += this.corr_spec_buf[k];
+       xx_sum += this.mag_spec_buf[k];
+       yy_sum += this.yy_spec_buf[k];
+       c_n += 1;
+       k += 1;
+    );
+    p_avg = (c_n > 0) ? ((xx_sum + yy_sum) * (0.5 / c_n)) : 0;
+    denom = sqrt(max(0, xx_sum) * max(0, yy_sum)) + 0.000000000001;
+    w_gate = p_avg / (p_avg + this.corr_gate_p);
+    w_gate < 0 ? w_gate = 0;
+    w_gate > 1 ? w_gate = 1;
+    c_val = (xx_sum <= 0 || yy_sum <= 0) ? 0 : ((xy_sum / denom) * w_gate);
+    c_val = max(-1, min(1, c_val));
+    
+    cx = mb_x + t * mb_w;
+    cw = (mb_x + ((i+1)/(corr_disp_bins-1))*mb_w) - cx;
+    cw < 1 ? cw = 1;
+    
+    y_target = cy - c_val * (mb_h * 0.5);
+    
+    c_val >= 0 ? (gfx_r=0.2; gfx_g=0.85; gfx_b=0.4; gfx_a=0.8;) : (gfx_r=0.9; gfx_g=0.3; gfx_b=0.3; gfx_a=0.8;);
+    
+    y_target < cy ? (
+       gfx_rect(cx, y_target, cw, cy - y_target);
+    ) : (
+       gfx_rect(cx, cy, cw, y_target - cy);
+    );
+    
+    i += 1;
+  );
+);

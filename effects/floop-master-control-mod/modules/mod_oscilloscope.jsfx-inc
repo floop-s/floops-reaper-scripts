@@ -1,0 +1,204 @@
+@init
+
+// Floop Master Control - Oscilloscope Module
+// @author Floop-s
+
+function mod_oscilloscope_init(slot_id, mem_start, mem_size) local(ptr) (
+  ptr = mem_start;
+  this.slot_id = slot_id;
+  this.mem = mem_start;
+  
+  this.scope_srate = srate;
+  this.scope_max_seconds = 5;
+  this.scope_max_frames = max(1, floor(mem_size * 0.5));
+  this.scope_size = min(max(1, floor(this.scope_srate * this.scope_max_seconds)), this.scope_max_frames);
+  this.scope_max_seconds = this.scope_size / max(1, this.scope_srate);
+  this.scope_view_seconds = min(2, this.scope_max_seconds);
+  this.scope_wr = 0;
+  this.scope_filled = 0;
+  this.scope_show_l = 1;
+  this.scope_show_r = 1;
+  
+  this.scope_buf = ptr; ptr += this.scope_size * 2;
+  memset(this.scope_buf, 0, this.scope_size * 2);
+);
+
+function mod_oscilloscope_sample(l, r) (
+  l != l ? l = 0;
+  l > 2 ? l = 2;
+  l < -2 ? l = -2;
+  r != r ? r = 0;
+  r > 2 ? r = 2;
+  r < -2 ? r = -2;
+  this.scope_buf[this.scope_wr*2] = l;     
+  this.scope_buf[this.scope_wr*2+1] = r;   
+  this.scope_wr += 1;
+  this.scope_wr >= this.scope_size ? this.scope_wr = 0;
+  
+  this.scope_filled < this.scope_size ? this.scope_filled += 1;
+);
+
+function mod_oscilloscope_reset() (
+  this.scope_srate = srate;
+  this.scope_max_seconds = this.scope_size / max(1, this.scope_srate);
+  this.scope_view_seconds = min(this.scope_view_seconds, this.scope_max_seconds);
+);
+
+function mod_oscilloscope_gfx(x, y, w, h, scale) local(title_h, top_pad, bottom_pad, controls_h, ctrl_y, btn_w, btn_h, btn_y, btn_x_l, btn_x_r, plot_x, plot_y, plot_w, plot_h, mid_y0, plot_scale, sec, tx, scope_n, scope_cols, scope_oldest, scope_win, ch, should_draw, col, s0, s1, s, idx, v, mn, mx, y1, y2, tsec, tw, th, hover, hover_l, hover_r) (
+  // Background
+  gfx_r=c_panel_r; gfx_g=c_panel_g; gfx_b=c_panel_b; gfx_a=1;
+  gfx_rect(x, y, w, h);
+  gfx_r=c_panel_edge_r; gfx_g=c_panel_edge_g; gfx_b=c_panel_edge_b; gfx_a=1;
+  gfx_line(x, y, x+w, y);
+  gfx_line(x, y+h, x+w, y+h);
+  gfx_line(x, y, x, y+h);
+  gfx_line(x+w, y, x+w, y+h);
+  
+  title_h = 0;
+  top_pad = max(4, floor(6 * scale));
+  bottom_pad = max(4, floor(6 * scale));
+  
+  // Buttons L / R
+  btn_w = max(24, floor(24 * scale));
+  btn_h = max(floor(16 * scale), floor(f_sz_small * 1.6));
+  controls_h = btn_h + floor(4 * scale);
+  ctrl_y = y + top_pad;
+  btn_y = ctrl_y + (controls_h - btn_h) / 2;
+  btn_x_r = x + w - floor(10 * scale) - btn_w;
+  btn_x_l = btn_x_r - btn_w - floor(4 * scale);
+  
+  hover_l = mouse_x >= btn_x_l && mouse_x < btn_x_l+btn_w && mouse_y >= btn_y && mouse_y < btn_y+btn_h;
+  hover_r = mouse_x >= btn_x_r && mouse_x < btn_x_r+btn_w && mouse_y >= btn_y && mouse_y < btn_y+btn_h;
+  
+  // Draw L
+  gfx_r=0.15; gfx_g=0.15; gfx_b=0.18; gfx_a=1;
+  hover_l ? (gfx_r=0.25; gfx_g=0.25; gfx_b=0.28;);
+  this.scope_show_l ? (gfx_r=0.2; gfx_g=0.6; gfx_b=0.3;);
+  gfx_rect(btn_x_l, btn_y, btn_w, btn_h);
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.8;
+  gfx_measurestr("L", tw, th);
+  gfx_x = btn_x_l + (btn_w - tw)/2; gfx_y = btn_y + (btn_h - th)/2;
+  gfx_drawstr("L");
+  hover_l && ui_click_l ? this.scope_show_l = 1 - this.scope_show_l;
+  
+  // Draw R
+  gfx_r=0.15; gfx_g=0.15; gfx_b=0.18; gfx_a=1;
+  hover_r ? (gfx_r=0.25; gfx_g=0.25; gfx_b=0.28;);
+  this.scope_show_r ? (gfx_r=0.2; gfx_g=0.6; gfx_b=0.3;);
+  gfx_rect(btn_x_r, btn_y, btn_w, btn_h);
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.8;
+  gfx_measurestr("R", tw, th);
+  gfx_x = btn_x_r + (btn_w - tw)/2; gfx_y = btn_y + (btn_h - th)/2;
+  gfx_drawstr("R");
+  hover_r && ui_click_l ? this.scope_show_r = 1 - this.scope_show_r;
+  
+  plot_x = x + floor(10 * scale);
+  plot_y = ctrl_y + controls_h + floor(2 * scale);
+  plot_w = w - floor(20 * scale);
+  plot_h = h - (plot_y - y) - bottom_pad;
+  plot_w < 1 ? plot_w = 1;
+  plot_h < 1 ? plot_h = 1;
+  mid_y0 = plot_y + plot_h/2;
+  plot_scale = (plot_h * 0.5);
+
+  hover = mouse_x >= plot_x && mouse_x < plot_x + plot_w && mouse_y >= plot_y && mouse_y < plot_y + plot_h;
+  hover ? (
+    mouse_wheel != 0 ? (
+      this.scope_view_seconds *= (mouse_wheel > 0 ? 0.9 : 1.1); // Zoom in/out
+      this.scope_view_seconds = max(0.1, min(this.scope_max_seconds, this.scope_view_seconds));
+      mouse_wheel = 0;
+    );
+  );
+
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.09;
+  sec = 0;
+  loop(ceil(this.scope_view_seconds) + 1,
+    tx = plot_x + (sec / this.scope_view_seconds) * plot_w;
+    tx <= plot_x + plot_w ? gfx_line(tx, plot_y, tx, plot_y + plot_h);
+    sec += 1;
+  );
+
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.08;
+  gfx_line(plot_x, mid_y0, plot_x + plot_w, mid_y0);
+  gfx_line(plot_x, mid_y0 - plot_scale, plot_x + plot_w, mid_y0 - plot_scale);
+  gfx_line(plot_x, mid_y0 + plot_scale, plot_x + plot_w, mid_y0 + plot_scale);
+  gfx_line(plot_x, mid_y0 - plot_scale*0.5, plot_x + plot_w, mid_y0 - plot_scale*0.5);
+  gfx_line(plot_x, mid_y0 + plot_scale*0.5, plot_x + plot_w, mid_y0 + plot_scale*0.5);
+
+  scope_n = max(0, this.scope_filled);
+  scope_n > 1 ? (
+    scope_n = min(scope_n, floor(this.scope_view_seconds * this.scope_srate));
+    
+    scope_cols = min(800, floor(plot_w));
+    scope_cols < 2 ? scope_cols = 2;
+    scope_n < scope_cols ? scope_cols = scope_n;
+    scope_cols < 2 ? scope_cols = 2;
+
+    this.scope_filled < this.scope_size ? (
+      scope_oldest = this.scope_filled - scope_n;
+    ) : (
+      scope_oldest = (this.scope_wr - scope_n + this.scope_size) % this.scope_size;
+    );
+    
+    scope_win = scope_n / scope_cols;
+    scope_win < 1 ? scope_win = 1;
+
+    ch = 0;
+    loop(2,
+      should_draw = (ch == 0 && this.scope_show_l) || (ch == 1 && this.scope_show_r);
+      should_draw ? (
+        col = 0;
+        loop(scope_cols,
+          s0 = floor(col * scope_win);
+          s0 > scope_n - 1 ? s0 = scope_n - 1;
+          s1 = floor((col + 1) * scope_win);
+          s1 > scope_n ? s1 = scope_n;
+          s1 <= s0 ? s1 = s0 + 1;
+          s1 > scope_n ? s1 = scope_n;
+
+          s = s0;
+          idx = scope_oldest + s;
+          idx >= this.scope_size ? idx -= this.scope_size;
+          v = this.scope_buf[idx*2 + ch]; 
+          mn = v; mx = v;
+
+          idx += 1;
+          idx >= this.scope_size ? idx = 0;
+          loop(max(0, s1 - s0 - 1),
+            v = this.scope_buf[idx*2 + ch]; 
+            v < mn ? mn = v;
+            v > mx ? mx = v;
+            idx += 1;
+            idx >= this.scope_size ? idx = 0;
+          );
+
+          (mx > 1.0 || mn < -1.0) ? (gfx_r=1.0; gfx_g=0.2; gfx_b=0.2; gfx_a=0.9;) : 
+          ch == 0 ? (gfx_r=0.9; gfx_g=0.9; gfx_b=0.9; gfx_a=0.7;) : (gfx_r=0.2; gfx_g=0.9; gfx_b=0.2; gfx_a=0.7;);
+
+          tx = plot_x + (col / (scope_cols - 1)) * plot_w;
+          y1 = mid_y0 - mx * plot_scale;
+          y2 = mid_y0 - mn * plot_scale;
+          y1 = max(plot_y, min(plot_y + plot_h, y1));
+          y2 = max(plot_y, min(plot_y + plot_h, y2));
+          gfx_line(tx, y1, tx, y2);
+          col += 1;
+        );
+      );
+      ch += 1;
+    );
+  );
+
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.55;
+  gfx_setfont(1, #font_ui, min(f_sz_small, max(10, floor(11 * scale))));
+  sec = 0;
+  loop(ceil(this.scope_view_seconds) + 1,
+    tx = plot_x + (sec / this.scope_view_seconds) * plot_w;
+    sprintf(#tsec, "%.1fs", sec - this.scope_view_seconds);
+    gfx_measurestr(#tsec, tw, th);
+    gfx_x = tx - tw*0.5;
+    gfx_y = plot_y + plot_h + floor(4 * scale);
+    tx <= plot_x + plot_w ? gfx_drawstr(#tsec);
+    sec += 1;
+  );
+
+);
