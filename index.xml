@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="47b2e6a877415add7332d46a16828baa9a54624e">
+<index version="1" name="Floop's Reaper Scripts" commit="cf42ea727ee883fda043e06c35976ce0f8a6a134">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -17,6 +17,16 @@
       <version name="1.1.0" author="Floop-s" time="2026-01-12T13:21:00Z">
         <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/f6a71f83b4aecc9cb2c5defb80c67c85dcff896c/effects/floop-chrominator/floop-chrominator.jsfx</source>
       </version>
+      <version name="2.0.0" author="Floop-s" time="2026-05-17T12:24:20Z">
+        <changelog><![CDATA[+ DSP Rewrite: Zero-Delay Feedback (ZDF) filters and math-accurate saturation models
++ Anti-Aliasing: High-performance 12th-order Polyphase IIR Oversampling (2x/4x)
++ Analog Drift (TMT): Added subtle L/R variance for organic stereo imaging
++ GUI Overhaul: Modern dark theme, colored value arcs, and cleaner layout
++ Performance: Optimized CPU usage with Fast-Math block evaluation
+# Fix: Mix default is now 100%
+# Fix: Perfect Unity Gain at 0 Drive (no volume drops)]]></changelog>
+        <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-chrominator/floop-chrominator.jsfx</source>
+      </version>
     </reapack>
   </category>
   <category name="effects/floop-master-control">
@@ -28,7 +38,7 @@
 
 {\pard \ql \f0 \sa180 \li0 \fi0 Integrated master monitoring and analysis tool for REAPER.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Includes:\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab True Peak limiting and metering\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab True Peak metering with target limits\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab LUFS integrated and short-term metering\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Spectrum analysis\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Phase correlation view\sa180\par}
@@ -48,6 +58,49 @@
 New: Continuous Spectrum Smoothing slider (Right-Click for 1/3, 1/12, 1/24 presets).
 Tweak: Increased 'Slow' spectrum averaging time to ~5000ms.]]></changelog>
         <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/0a5a426824b366aaf3f3a3fbf344410628e71a81/effects/floop-master-control/floop-master-control.jsfx</source>
+      </version>
+      <version name="1.3.0" author="Floop-s" time="2026-05-17T12:24:20Z">
+        <changelog><![CDATA[Performance: Removed redundant LUFS arrays and implemented True Peak ring buffer for lower CPU usage.
+DSP: Corrected Goniometer L/R orientation and improved Phase correlation math for noise immunity.
+UX: Extended LUFS meter down to -72 LUFS and stabilized low-frequency Phase readings.
+GFX: Re-engineered Goniometer rendering for true lossless visualization of every transient.]]></changelog>
+        <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control/floop-master-control.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="effects/floop-master-control-mod">
+    <reapack name="floop-master-control-mod.jsfx" type="effect" desc="Floop Master Control (Modular)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Modular master monitoring and analysis tool for REAPER.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Slot-based workflow (up to 9 slots per instance).\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Includes:\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab True Peak and LUFS metering (Short-Term and Integrated)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Spectrum analyzer (Mid/Side, temporal averaging, smoothing, hold/freeze)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Phase correlation (bar) and multi-band phase\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Stereo goniometer\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Oscilloscope\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Spectrogram\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Monitor control (Dim, Solo Mid/Side, Low/Mid/High focus)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab VU meter\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Keywords: LUFS, true peak, spectrum, spectrogram, phase, stereo, monitor, mastering.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Floop-s" time="2026-05-17T12:24:20Z">
+        <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/floop-master-control-mod.jsfx</source>
+        <source type="data" file="modules/mod_meter.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_meter.jsfx-inc</source>
+        <source type="data" file="modules/mod_spectrum.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_spectrum.jsfx-inc</source>
+        <source type="data" file="modules/mod_stereo.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_stereo.jsfx-inc</source>
+        <source type="data" file="modules/mod_phase.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_phase.jsfx-inc</source>
+        <source type="data" file="modules/mod_correlometer.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_correlometer.jsfx-inc</source>
+        <source type="data" file="modules/mod_oscilloscope.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_oscilloscope.jsfx-inc</source>
+        <source type="data" file="modules/mod_monitor.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_monitor.jsfx-inc</source>
+        <source type="data" file="modules/mod_vumeter.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_vumeter.jsfx-inc</source>
+        <source type="data" file="modules/mod_spectrogram.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_spectrogram.jsfx-inc</source>
       </version>
     </reapack>
   </category>
@@ -138,12 +191,13 @@ Tweak: Increased 'Slow' spectrum averaging time to ~5000ms.]]></changelog>
 
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Floop Groove-A-Thor\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 {\b Groove Extraction and Injection tool for REAPER.}\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Extract the rhythmic DNA (timing and velocity) from any Audio or MIDI source and apply it to any target item (Audio or MIDI) with precision.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Extract the rhythmic feel (timing and velocity) from any Audio or MIDI source and apply it to any target item (Audio or MIDI) with precision.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 {\b Key Features:}\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Groove Extraction from Audio (transients) or MIDI\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Groove Injection with adjustable Timing, Velocity, and Grid Attraction\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Phase Coherent Mode for multi-track drum phase preservation\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Advanced Visualizer with LOCKED (Groove) and LIVE (Selection) modes\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Procedural Groove Generator (Swing, Push/Pull)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Procedural Groove Generator (Swing, Push/Pull, Velocity Curve)\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Groove Library with Bank management\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Non-destructive workflow with Undo support\sa180\par}
 }
@@ -156,6 +210,16 @@ Tweak: Increased 'Slow' spectrum averaging time to ~5000ms.]]></changelog>
       <version name="1.0.1" author="Floop-s" time="2026-03-15T09:45:39Z">
         <changelog><![CDATA[+ Bugfix: Fixed audio loop start/end marker shifting when applying groove, ensuring loop boundary stability.]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/c57bc4141e6e5c408608c54a2fe6e7aa30a74277/scripts/floop-groove-a-thor/floop-groove-a-thor.lua</source>
+      </version>
+      <version name="1.1.0" author="Floop-s" time="2026-05-17T12:24:20Z">
+        <changelog><![CDATA[+ Generator: Added Push/Pull offset and hierarchical Velocity Curve.
++ Injector: Added Phase Coherent Mode for multi-track drum phase preservation.
++ Extraction: Added 15ms post-transient RMS lookahead for accurate audio velocity.
++ Extraction: Added Sanity Check warning for Base Grid mismatch.
++ Visualizer: Extraction preview fully syncs with real-time UI threshold/sensitivity.
++ Bugfix: Fixed audio loop boundaries shifting when applying groove.
++ Bugfix: Added Bank deletion via context menu.]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/scripts/floop-groove-a-thor/floop-groove-a-thor.lua</source>
       </version>
     </reapack>
   </category>
@@ -182,6 +246,22 @@ Tweak: Increased 'Slow' spectrum averaging time to ~5000ms.]]></changelog>
         <source file="Floop Hunter Framework/modules/hunters/hunter_breath.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/hunters/hunter_breath.lua</source>
         <source file="Floop Hunter Framework/modules/hunters/hunter_ess.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/hunters/hunter_ess.lua</source>
         <source file="Floop Hunter Framework/modules/hunters/hunter_plosive.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/hunters/hunter_plosive.lua</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="scripts/floop-key-bpm-sniffer">
+    <reapack name="floop-key-bpm-sniffer.lua" type="script" desc="Floop Key &amp; BPM Sniffer">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Advanced audio analysis tool for Reaper. Detects the musical Key and tempo (BPM) of selected audio items using Spectral Flux and Chromagram algorithms. Features a dynamic UI that adapts to any Reaper theme.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Floop-s" time="2026-05-17T12:24:20Z">
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/scripts/floop-key-bpm-sniffer/floop-key-bpm-sniffer.lua</source>
       </version>
     </reapack>
   </category>
