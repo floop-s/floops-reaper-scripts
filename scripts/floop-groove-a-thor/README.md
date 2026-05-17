@@ -1,6 +1,6 @@
 # Floop Groove-A-Thor
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.0.1-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.1.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 **Transfer rhythmic feel between any Audio or MIDI items in REAPER extract groove, inject swing, generate patterns from scratch.**
 
@@ -8,27 +8,33 @@
 
 ## Overview
 
-**Floop Groove-A-Thor** is a comprehensive groove management utility designed to bridge the gap between "feel" and "grid". It allows you to extract the rhythmic DNA (timing and velocity) from any Audio or MIDI source and apply it to any target item (Audio or MIDI) with precision.
+**Floop Groove-A-Thor** is a comprehensive groove management utility designed to bridge the gap between "feel" and "grid". It allows you to extract the rhythmic feel (timing and velocity) from any Audio or MIDI source and apply it to any target item (Audio or MIDI) with precision.
 
 Beyond simple quantization, Groove-A-Thor offers a robust **Visualizer**, a **Groove Library** for storing your favorite feels, and a **Procedural Groove Generator** for creating unique rhythms from scratch.
 
 ---
 
-## Screenshot
+## Overview & Media
 
-<p align="center"> 
- <br> 
- <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-groove-a-thor.png" target="_blank"> 
-   <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-groove-a-thor.png" width="450" style="border: 1px solid #202121ff;" alt="Click to zoom in"> 
- </a> 
- <br> 
- </p>
+
+<p align="center">
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-groove-a-thor-audio.png" target="_blank">
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-groove-a-thor-audio.png" width="32%" style="border: 1px solid #27a086ff;" alt="Audio">
+  </a>
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-groove-a-thor-midi.png" target="_blank">
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-groove-a-thor-midi.png" width="32%" style="border: 1px solid #27a086ff;" alt="Plosive">
+  </a>
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-groove-a-thor-generator.png" target="_blank">
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-groove-a-thor-generator.png" width="32%" style="border: 1px solid #27a086ff;" alt="Breath">
+  </a>
+</p>
 
 ---
 
 ## Key Features
 
 *   **Groove Extraction**: Analyze Audio (transients) or MIDI items to capture precise timing deviations and velocity dynamics.
+*   **Phase Coherent Mode**: Automatically align multi-track drum stems using a single master guide to preserve phase relationships.
 *   **Groove Injection**: Apply extracted grooves to any target item (MIDI or Audio) with adjustable intensity (0-100%).
 *   **Advanced Visualizer**:
     *   **LOCKED Mode**: Visualize the stored groove pattern currently in the buffer.
@@ -164,6 +170,16 @@ Groove-A-Thor is a powerful tool for transferring rhythmic feel, but it operates
 
 ## Changelog
 
+### v1.1.0
+* Added: Push/Pull slider to the Procedural Generator to offset the groove ahead/behind the beat.
+* Added: Velocity Curve slider to the Procedural Generator to add hierarchical musical dynamics.
+* Added: Phase Coherent Mode in the Injector for multi-track drum timing preservation.
+* Added: Post-transient RMS detection (15ms lookahead) for accurate Audio Velocity extraction.
+* Added: Large offset sanity check warning when extracting audio misaligned with the Base Grid.
+* Improved: Visualizer extraction preview now fully syncs with real-time UI threshold/sensitivity adjustments.
+* Bugfix: Fixed audio loop start/end marker shifting when applying groove, ensuring loop boundary stability.
+* Bugfix: Banks can now be deleted via right-click context menu.
+
 ### v1.0.1
 * Bugfix: Fixed an issue where applying a groove to an audio item would inadvertently shift the start and end boundaries of the loop. Loop edges are now properly pinned and preserved.
 
@@ -190,4 +206,3 @@ Project home: [https://www.floratarantino.com/floop-reaper-scripts/](https://www
 
 Licensed under the **GNU General Public License v3.0 (GPL-3.0)**  
 See `LICENSE.txt` in the repository for details.
-

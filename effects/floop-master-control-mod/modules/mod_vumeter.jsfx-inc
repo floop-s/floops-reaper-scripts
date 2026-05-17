@@ -1,0 +1,505 @@
+@init
+
+// Floop Master Control - VU Meter Module
+// @author Floop-s
+
+function mod_vumeter_init(slot_id, mem_start, mem_size) (
+  this.slot_id = slot_id;
+  this.mem = mem_start;
+  
+  this.vu_calib = 18;
+  this.vu_ref_dbfs = -18;
+  this.vu_t99 = 0.300;
+  this.vu_zeta = 0.82;
+  this.vu_ma_to_rms = $pi / (2 * sqrt(2));
+  this.vu_inv_ref_rms = 1;
+  this.vu_os_target = 0.0125;
+  this.vu_meas_t99 = 0;
+  this.vu_meas_os = 0;
+  this.vu_drag_os = 0;
+  this.vu_drag_y0 = 0;
+  this.vu_drag_os0 = this.vu_os_target;
+  this.vu_pending_apply = 0;
+  this.vu_pending_srate = 0;
+  this.vu_p_b0 = 1; this.vu_p_b1 = 0; this.vu_p_b2 = 0;
+  this.vu_p_a1 = 0; this.vu_p_a2 = 0;
+  this.vu_p_a1 = 0; this.vu_p_a2 = 0;
+  this.vu_p_zeta = this.vu_zeta;
+  this.vu_p_wn = 0;
+  this.vu_p_meas_t99 = 0;
+  this.vu_p_meas_os = 0;
+
+  this.vu_b0 = 1; this.vu_b1 = 0; this.vu_b2 = 0;
+  this.vu_a1 = 0; this.vu_a2 = 0;
+  this.vu_x1 = 0; this.vu_x2 = 0;
+  this.vu_y1 = 0; this.vu_y2 = 0;
+  this.vu_coeff_srate = -1;
+  this.vu_coeff_calib = -1;
+
+  this.env_m = 0;
+  
+  this.vu_min_db = -20;
+  this.vu_max_db = 3;
+  this.vu_min_amp = exp(this.vu_min_db * 0.115129254);
+  this.vu_max_amp = exp(this.vu_max_db * 0.115129254);
+  this.inv_log10 = 1.0 / log(10);
+);
+
+
+function mod_vumeter_reset() (
+  // Intentionally empty to preserve ballistics across loop boundaries.
+  0;
+);
+
+function mod_vumeter_block(calib_dbfs) local(os_target, z_lo, z_hi, z_mid, os_mid, wn_guess, wn_lo, wn_hi, wn_mid, iter, K, D0, D1, D2, b0, b1, b2, a1, a2, x1, x2, y1, y2, n, n99, nmax, maxy, t99i, y) (
+  this.vu_coeff_calib != calib_dbfs ? (
+    this.vu_coeff_calib = calib_dbfs;
+    this.vu_calib = calib_dbfs;
+    this.vu_ref_dbfs = -calib_dbfs;
+    this.vu_inv_ref_rms = 1 / max(0.000000001, exp(this.vu_ref_dbfs * 0.115129254));
+  );
+
+  this.vu_pending_apply && this.vu_pending_srate == srate ? (
+    this.vu_pending_apply = 0;
+    this.vu_zeta = this.vu_p_zeta;
+    this.vu_wn = this.vu_p_wn;
+    this.vu_b0 = this.vu_p_b0; this.vu_b1 = this.vu_p_b1; this.vu_b2 = this.vu_p_b2;
+    this.vu_a1 = this.vu_p_a1; this.vu_a2 = this.vu_p_a2;
+    this.vu_meas_t99 = this.vu_p_meas_t99;
+    this.vu_meas_os = this.vu_p_meas_os;
+    this.vu_x1 = 0; this.vu_x2 = 0;
+    this.vu_y1 = 0; this.vu_y2 = 0;
+    this.env_m = 0;
+  );
+
+  this.vu_coeff_srate != srate ? (
+    this.vu_coeff_srate = srate;
+
+    os_target = max(0.0001, min(0.250, this.vu_os_target));
+    z_lo = 0.30; z_hi = 0.99;
+    loop(22,
+      z_mid = (z_lo + z_hi) * 0.5;
+      os_mid = exp(-z_mid * $pi / sqrt(max(0.000000000001, 1 - z_mid*z_mid)));
+      os_mid > os_target ? z_lo = z_mid : z_hi = z_mid;
+    );
+    this.vu_zeta = z_hi;
+
+    this.vu_t99 = max(0.001, this.vu_t99);
+    n99 = max(1, floor(this.vu_t99 * srate + 0.5));
+    wn_guess = 4.6 / (this.vu_zeta * this.vu_t99);
+    wn_lo = wn_guess * 0.25;
+    wn_hi = wn_guess * 4.0;
+
+    iter = 0;
+    loop(18,
+      wn_mid = (wn_lo + wn_hi) * 0.5;
+      K = 2 * srate;
+
+      D0 = K*K + 2*this.vu_zeta*wn_mid*K + wn_mid*wn_mid;
+      D1 = -2*K*K + 2*wn_mid*wn_mid;
+      D2 = K*K - 2*this.vu_zeta*wn_mid*K + wn_mid*wn_mid;
+
+      b0 = (wn_mid*wn_mid) / D0;
+      b1 = (2*wn_mid*wn_mid) / D0;
+      b2 = (wn_mid*wn_mid) / D0;
+      a1 = D1 / D0;
+      a2 = D2 / D0;
+
+      x1 = 0; x2 = 0; y1 = 0; y2 = 0;
+      maxy = 0;
+      t99i = 0;
+      nmax = max(8, n99 * 2);
+      n = 0;
+      loop(nmax,
+        y = b0 + b1*x1 + b2*x2 - a1*y1 - a2*y2;
+        y < 0 ? y = 0;
+        y > maxy ? maxy = y;
+        (t99i == 0 && y >= 0.99) ? t99i = n + 1;
+        x2 = x1; x1 = 1;
+        y2 = y1; y1 = y;
+        n += 1;
+      );
+      t99i == 0 ? t99i = nmax + 1;
+
+      t99i > n99 ? wn_lo = wn_mid : wn_hi = wn_mid;
+      iter += 1;
+    );
+
+    this.vu_wn = wn_hi;
+    this.vu_K = 2 * srate;
+
+    this.vu_D0 = this.vu_K*this.vu_K + 2*this.vu_zeta*this.vu_wn*this.vu_K + this.vu_wn*this.vu_wn;
+    this.vu_D1 = -2*this.vu_K*this.vu_K + 2*this.vu_wn*this.vu_wn;
+    this.vu_D2 = this.vu_K*this.vu_K - 2*this.vu_zeta*this.vu_wn*this.vu_K + this.vu_wn*this.vu_wn;
+
+    this.vu_b0 = (this.vu_wn*this.vu_wn) / this.vu_D0;
+    this.vu_b1 = (2*this.vu_wn*this.vu_wn) / this.vu_D0;
+    this.vu_b2 = (this.vu_wn*this.vu_wn) / this.vu_D0;
+    this.vu_a1 = this.vu_D1 / this.vu_D0;
+    this.vu_a2 = this.vu_D2 / this.vu_D0;
+
+    x1 = 0; x2 = 0; y1 = 0; y2 = 0;
+    maxy = 0;
+    t99i = 0;
+    nmax = max(8, n99 * 3);
+    n = 0;
+    loop(nmax,
+      y = this.vu_b0 + this.vu_b1*x1 + this.vu_b2*x2 - this.vu_a1*y1 - this.vu_a2*y2;
+      y < 0 ? y = 0;
+      y > maxy ? maxy = y;
+      (t99i == 0 && y >= 0.99) ? t99i = n + 1;
+      x2 = x1; x1 = 1;
+      y2 = y1; y1 = y;
+      n += 1;
+    );
+    t99i == 0 ? t99i = nmax + 1;
+    this.vu_meas_t99 = (t99i - 1) / srate;
+    this.vu_meas_os = max(0, maxy - 1);
+
+    this.vu_x1 = 0; this.vu_x2 = 0;
+    this.vu_y1 = 0; this.vu_y2 = 0;
+    this.env_m = 0;
+  );
+);
+
+function mod_vumeter_queue_recalc(t99, os_target) local(z_lo, z_hi, z_mid, os_mid, wn_guess, wn_lo, wn_hi, wn_mid, K, D0, D1, D2, b0, b1, b2, a1, a2, x1, x2, y1, y2, n, n99, nmax, maxy, t99i, y) (
+  this.vu_t99 = t99;
+  this.vu_os_target = os_target;
+
+  os_target = max(0.0001, min(0.250, os_target));
+  z_lo = 0.30; z_hi = 0.99;
+  loop(18,
+    z_mid = (z_lo + z_hi) * 0.5;
+    os_mid = exp(-z_mid * $pi / sqrt(max(0.000000000001, 1 - z_mid*z_mid)));
+    os_mid > os_target ? z_lo = z_mid : z_hi = z_mid;
+  );
+
+  t99 = max(0.001, t99);
+  n99 = max(1, floor(t99 * srate + 0.5));
+  wn_guess = 4.6 / (z_hi * t99);
+  wn_lo = wn_guess * 0.25;
+  wn_hi = wn_guess * 4.0;
+
+  loop(14,
+    wn_mid = (wn_lo + wn_hi) * 0.5;
+    K = 2 * srate;
+    D0 = K*K + 2*z_hi*wn_mid*K + wn_mid*wn_mid;
+    D1 = -2*K*K + 2*wn_mid*wn_mid;
+    D2 = K*K - 2*z_hi*wn_mid*K + wn_mid*wn_mid;
+    b0 = (wn_mid*wn_mid) / D0;
+    b1 = (2*wn_mid*wn_mid) / D0;
+    b2 = (wn_mid*wn_mid) / D0;
+    a1 = D1 / D0;
+    a2 = D2 / D0;
+
+    x1 = 0; x2 = 0; y1 = 0; y2 = 0;
+    t99i = 0;
+    nmax = max(8, n99 * 2);
+    n = 0;
+    loop(nmax,
+      y = b0 + b1*x1 + b2*x2 - a1*y1 - a2*y2;
+      y < 0 ? y = 0;
+      (t99i == 0 && y >= 0.99) ? t99i = n + 1;
+      x2 = x1; x1 = 1;
+      y2 = y1; y1 = y;
+      n += 1;
+    );
+    t99i == 0 ? t99i = nmax + 1;
+    t99i > n99 ? wn_lo = wn_mid : wn_hi = wn_mid;
+  );
+
+  wn_mid = wn_hi;
+  K = 2 * srate;
+  D0 = K*K + 2*z_hi*wn_mid*K + wn_mid*wn_mid;
+  D1 = -2*K*K + 2*wn_mid*wn_mid;
+  D2 = K*K - 2*z_hi*wn_mid*K + wn_mid*wn_mid;
+  this.vu_p_b0 = (wn_mid*wn_mid) / D0;
+  this.vu_p_b1 = (2*wn_mid*wn_mid) / D0;
+  this.vu_p_b2 = (wn_mid*wn_mid) / D0;
+  this.vu_p_a1 = D1 / D0;
+  this.vu_p_a2 = D2 / D0;
+  this.vu_p_zeta = z_hi;
+  this.vu_p_wn = wn_mid;
+
+  x1 = 0; x2 = 0; y1 = 0; y2 = 0;
+  maxy = 0;
+  t99i = 0;
+  nmax = max(8, n99 * 3);
+  n = 0;
+  loop(nmax,
+    y = this.vu_p_b0 + this.vu_p_b1*x1 + this.vu_p_b2*x2 - this.vu_p_a1*y1 - this.vu_p_a2*y2;
+    y < 0 ? y = 0;
+    y > maxy ? maxy = y;
+    (t99i == 0 && y >= 0.99) ? t99i = n + 1;
+    x2 = x1; x1 = 1;
+    y2 = y1; y1 = y;
+    n += 1;
+  );
+  t99i == 0 ? t99i = nmax + 1;
+  this.vu_p_meas_t99 = (t99i - 1) / srate;
+  this.vu_p_meas_os = max(0, maxy - 1);
+
+  this.vu_pending_srate = srate;
+  this.vu_pending_apply = 1;
+);
+
+function mod_vumeter_sample(l, r) local(m, abs_m, u, y) (
+  // Summed mono signal (L+R)/2
+  m = (l + r) * 0.5;
+  abs_m = abs(m);
+
+  u = abs_m * this.vu_ma_to_rms * this.vu_inv_ref_rms;
+
+  y = this.vu_b0*u + this.vu_b1*this.vu_x1 + this.vu_b2*this.vu_x2 - this.vu_a1*this.vu_y1 - this.vu_a2*this.vu_y2;
+  y < 0 ? y = 0;
+  y > this.vu_max_amp ? y = this.vu_max_amp;
+
+  this.vu_x2 = this.vu_x1; this.vu_x1 = u;
+  this.vu_y2 = this.vu_y1; this.vu_y1 = y;
+
+  this.env_m = y;
+);
+
+function mod_vumeter_draw_dial(cx, cy, r, ang_min, angle_max, val_db, label, scale, bound_x, bound_y, bound_w, bound_h, min_amp, max_amp) local(i, v, a, a1, a2, arc_steps, tx, ty, tdx, tdy, ang, needle_len, tw, th, v_step1, v_step2, amp, amp1, amp2, fs_lbl, label_rad, pad, bx0, by0, bx1, by1, kept, ok, j, x0, y0, x1, y1, mx0, my0, mx1, my1, lbl_val, lbl_n, margin) (
+  // 10^(-20/20) = 0.1, 10^(3/20) = 1.412537. We use amplitude mapping for authentic VU spacing.
+  // Draw background arc
+  i = 0;
+  arc_steps = 40;
+  while(i < arc_steps) (
+    v_step1 = -20 + (i / arc_steps) * 23;
+    v_step2 = -20 + ((i+1) / arc_steps) * 23;
+    
+    amp1 = exp(v_step1 * 0.115129254);
+    amp2 = exp(v_step2 * 0.115129254);
+    
+    a1 = ang_min + ((amp1 - min_amp) / (max_amp - min_amp)) * (angle_max - ang_min);
+    a2 = ang_min + ((amp2 - min_amp) / (max_amp - min_amp)) * (angle_max - ang_min);
+    
+    v_step1 > 0 ? (gfx_r=0.8; gfx_g=0.2; gfx_b=0.2; gfx_a=0.5;) : (gfx_r=0.9; gfx_g=0.9; gfx_b=0.85; gfx_a=0.2;);
+    
+    // Draw thicker arc slightly inside the ticks
+    gfx_triangle(
+      cx + sin(a1)*r*0.9, cy - cos(a1)*r*0.9,
+      cx + sin(a2)*r*0.9, cy - cos(a2)*r*0.9,
+      cx + sin(a1)*r*0.87, cy - cos(a1)*r*0.87
+    );
+    gfx_triangle(
+      cx + sin(a2)*r*0.9, cy - cos(a2)*r*0.9,
+      cx + sin(a2)*r*0.87, cy - cos(a2)*r*0.87,
+      cx + sin(a1)*r*0.87, cy - cos(a1)*r*0.87
+    );
+    i += 1;
+  );
+  
+  i = -20;
+  while(i <= 3) (
+    v = i;
+    amp = exp(v * 0.115129254);
+    a = ang_min + ((amp - min_amp) / (max_amp - min_amp)) * (angle_max - ang_min);
+    
+    tx = cx + sin(a) * r;
+    ty = cy - cos(a) * r;
+    
+    i > 0 ? (gfx_r=0.8; gfx_g=0.2; gfx_b=0.2; gfx_a=0.8;) : (gfx_r=0.8; gfx_g=0.8; gfx_b=0.8; gfx_a=0.6;);
+    
+    tdx = cx + sin(a) * (r * 0.92);
+    tdy = cy - cos(a) * (r * 0.92);
+    gfx_line(tx, ty, tdx, tdy);
+    
+    i == -20 ? i = -15 :
+    i == -15 ? i = -10 :
+    i == -10 ? i = -7 :
+    i == -7 ? i = -5 :
+    i == -5 ? i = -3 :
+    i == -3 ? i = -2 :
+    i == -2 ? i = -1 :
+    i == -1 ? i = 0 :
+    i == 0 ? i = 1 :
+    i == 1 ? i = 2 :
+    i == 2 ? i = 3 :
+              i = 4;
+  );
+  
+  fs_lbl = min(f_sz_small, max(9, floor(11 * scale)));
+  gfx_setfont(1, #font_ui, fs_lbl);
+  compact_mode ? label_rad = r * 1.06 : label_rad = r * 1.12;
+  pad = max(1, floor(2 * scale));
+  margin = max(1, floor(1 * scale));
+  
+  kept = 0;
+  lbl_val = -20;
+  loop(7,
+    amp = exp(lbl_val * 0.115129254);
+    a = ang_min + ((amp - min_amp) / (max_amp - min_amp)) * (angle_max - ang_min);
+    sprintf(#v_str, "%d", lbl_val);
+    gfx_measurestr(#v_str, tw, th);
+    
+    mx0 = cx + sin(a) * label_rad - tw/2;
+    my0 = cy - cos(a) * label_rad - th/2;
+    mx1 = mx0 + tw;
+    my1 = my0 + th;
+    
+    x0 = mx0 - pad; y0 = my0 - pad;
+    x1 = mx1 + pad; y1 = my1 + pad;
+    
+    ok = x0 >= bound_x && y0 >= bound_y && x1 <= bound_x + bound_w && y1 <= bound_y + bound_h;
+    j = 0;
+    while(ok && j < kept) (
+      (x1 < bx0[j] - margin) || (x0 > bx1[j] + margin) || (y1 < by0[j] - margin) || (y0 > by1[j] + margin) ? 0 : ok = 0;
+      j += 1;
+    );
+    
+    ok ? (
+      bx0[kept] = x0; by0[kept] = y0; bx1[kept] = x1; by1[kept] = y1;
+      kept += 1;
+      lbl_val > 0 ? (gfx_r=0.8; gfx_g=0.2; gfx_b=0.2; gfx_a=0.8;) : (gfx_r=0.9; gfx_g=0.9; gfx_b=0.9; gfx_a=0.75;);
+      gfx_x = mx0;
+      gfx_y = my0;
+      gfx_drawstr(#v_str);
+    );
+    
+    lbl_val == -20 ? lbl_val = -10 :
+    lbl_val == -10 ? lbl_val = -7 :
+    lbl_val == -7 ? lbl_val = -5 :
+    lbl_val == -5 ? lbl_val = -3 :
+    lbl_val == -3 ? lbl_val = 0 :
+    lbl_val == 0 ? lbl_val = 3 :
+                    lbl_val = 999;
+  );
+  
+  // Draw VU label
+  gfx_setfont(1, #font_ui, max(f_sz_norm, floor(14 * scale)), 'b');
+  gfx_measurestr("VU", tw, th);
+  gfx_x = cx - tw/2; gfx_y = cy - r * 0.50;
+  gfx_r=0.8; gfx_g=0.8; gfx_b=0.8; gfx_a=0.3;
+  gfx_drawstr("VU");
+  
+  gfx_setfont(1, #font_ui, min(f_sz_norm, max(9, floor(12 * scale))));
+  gfx_measurestr(label, tw, th);
+  gfx_x = cx - tw/2; gfx_y = cy - r * 0.35;
+  gfx_r=0.8; gfx_g=0.8; gfx_b=0.8; gfx_a=0.6;
+  gfx_drawstr(label);
+  
+  // Draw Needle
+  needle_len = r * 0.98;
+  
+  amp = exp(val_db * 0.115129254);
+  amp < min_amp ? amp = min_amp;
+  amp > max_amp ? amp = max_amp;
+  ang = ang_min + ((amp - min_amp) / (max_amp - min_amp)) * (angle_max - ang_min);
+  
+  tx = cx + sin(ang) * needle_len;
+  ty = cy - cos(ang) * needle_len;
+  
+  gfx_r=0.1; gfx_g=0.1; gfx_b=0.1; gfx_a=0.9; // shadow/dark
+  gfx_line(cx, cy, tx+1, ty+1);
+  
+  gfx_r=0.92; gfx_g=0.92; gfx_b=0.92; gfx_a=0.95;
+  
+  // Thick base, thin tip
+  gfx_triangle(
+    cx - cos(ang)*3*scale, cy - sin(ang)*3*scale,
+    cx + cos(ang)*3*scale, cy + sin(ang)*3*scale,
+    tx, ty
+  );
+  
+  // Pivot pin
+  gfx_r=0.3; gfx_g=0.3; gfx_b=0.3; gfx_a=1;
+  gfx_circle(cx, cy, 6*scale, 1, 1);
+  gfx_r=0.1; gfx_g=0.1; gfx_b=0.1; gfx_a=1;
+  gfx_circle(cx, cy, 3*scale, 1, 1);
+);
+
+function mod_vumeter_gfx(x, y, w, h, scale) local(title_h, top_pad, bottom_pad, meter_x, meter_y, meter_w, meter_h, pivot_x, pivot_y, radius, angle_min, angle_max, rms_m, vu_val_m, angle_m, hover, steps, a, tw, th, r_click_raw) (
+  // Background
+  gfx_r=c_panel_r; gfx_g=c_panel_g; gfx_b=c_panel_b; gfx_a=1;
+  gfx_rect(x, y, w, h);
+  gfx_r=c_panel_edge_r; gfx_g=c_panel_edge_g; gfx_b=c_panel_edge_b; gfx_a=1;
+  gfx_line(x, y, x+w, y);
+  gfx_line(x, y+h, x+w, y+h);
+  gfx_line(x, y, x, y+h);
+  gfx_line(x+w, y, x+w, y+h);
+  
+  title_h = 0;
+  top_pad = max(10, floor(14 * scale));
+  bottom_pad = max(4, floor(6 * scale));
+  
+  meter_x = x + floor(10*scale);
+  meter_y = y + top_pad;
+  meter_w = w - floor(20*scale);
+  meter_h = h - top_pad - bottom_pad;
+
+  r_click_raw = (mouse_cap&2) && !(last_mouse_cap&2);
+  hover = mouse_x >= meter_x && mouse_x < meter_x + meter_w && mouse_y >= meter_y && mouse_y < meter_y + meter_h;
+  hover ? (
+    r_click_raw ? (
+      this.vu_drag_os = 0;
+      this.vu_t99 = 0.300;
+      this.vu_os_target = 0.0125;
+      this.mod_vumeter_queue_recalc(this.vu_t99, this.vu_os_target);
+      ui_block_clicks = 1; ui_click_l = 0; ui_click_r = 0;
+    );
+
+    ui_click_l ? (
+      this.vu_drag_os = 1;
+      this.vu_drag_y0 = mouse_y;
+      this.vu_drag_os0 = this.vu_os_target;
+      ui_block_clicks = 1; ui_click_l = 0; ui_click_r = 0;
+    );
+
+    mouse_wheel != 0 ? (
+      steps = mouse_wheel > 0 ? 1 : -1;
+      a = exp(steps * 0.0953101798043249);
+      this.vu_t99 *= a;
+      this.vu_t99 = max(0.020, min(2.000, this.vu_t99));
+      this.mod_vumeter_queue_recalc(this.vu_t99, this.vu_os_target);
+      mouse_wheel = 0;
+    );
+  );
+
+  this.vu_drag_os ? (
+    (mouse_cap&1) ? (
+      this.vu_os_target = this.vu_drag_os0 + (this.vu_drag_y0 - mouse_y) * (0.0015 / max(0.25, scale));
+      this.vu_os_target = max(0.0001, min(0.250, this.vu_os_target));
+      r_click_raw ? (
+        this.vu_drag_os = 0;
+        this.vu_t99 = 0.300;
+        this.vu_os_target = 0.0125;
+        this.mod_vumeter_queue_recalc(this.vu_t99, this.vu_os_target);
+      );
+    ) : (
+      this.vu_drag_os = 0;
+      this.mod_vumeter_queue_recalc(this.vu_t99, this.vu_os_target);
+    );
+  );
+  
+  vu_val_m = (this.env_m > 0.000000001 ? 20 * log(this.env_m) * this.inv_log10 : -120);
+  
+  // Clamp values to the visual range
+  vu_val_m = max(this.vu_min_db, min(this.vu_max_db, vu_val_m));
+  
+  // Angles in radians (0 is straight up, -pi/4 is left, +pi/4 is right)
+  angle_min = -1.1; // roughly -63 degrees
+  angle_max = 1.1;  // roughly +63 degrees
+  
+  // Define layout for a single centered meter
+  pivot_y = meter_y + meter_h * 0.95;
+  pivot_x = meter_x + meter_w * 0.5;
+  
+  // Radius constrained by both width and height to fit perfectly
+  radius = min(meter_w * 0.48, meter_h * 0.9);
+  
+  // Summed Channel
+  mod_vumeter_draw_dial(pivot_x, pivot_y, radius, angle_min, angle_max, vu_val_m, "SUM L+R", scale, x, y, w, h, this.vu_min_amp, this.vu_max_amp);
+
+  hover ? (
+    gfx_setfont(1, #font_ui, min(f_sz_small, max(9, floor(11 * scale))));
+    gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.55;
+    sprintf(#vu_tip, "RT %.0fms  OS %.2f%%", this.vu_t99 * 1000, this.vu_os_target * 100);
+    gfx_measurestr(#vu_tip, tw, th);
+    gfx_x = x + w - tw - floor(10 * scale);
+    gfx_y = y + h - th - floor(6 * scale);
+    gfx_drawstr(#vu_tip);
+  );
+
+);

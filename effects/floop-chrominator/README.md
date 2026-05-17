@@ -1,4 +1,5 @@
 # Floop Chrominator
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-2..0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 **Stereo Analog Saturator for Reaper.**
 
@@ -9,18 +10,20 @@
 
 ## Screenshot
 
+
 <p align="center"> 
  <br> 
- <a href="../../assets/floop-chrominator-v1.1.0.png" target="_blank"> 
-   <img src="../../assets/floop-chrominator-v1.1.0.png" width="450" alt="click to zoom in"> 
+ <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-chrominator-2.png" target="_blank"> 
+   <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-chrominator-2.png" width="350" alt="click to zoom in"> 
  </a> 
  <br> 
- </p>
+</p>
+
 
 ## Key Features
 
 *   **Five Saturation Modes**: Soft, Even, Clip, Warm, Odd.
-*   **Oversampling**: 1x, 2x, 4x with FIR anti-aliasing (HQ 17-tap).
+*   **Oversampling**: 1x, 2x, 4x via high-performance 12th-order Polyphase IIR.
 *   **Filters**: Low Cut and High Cut with selectable slope (Gentle/Sharp).
 *   **Head Bump**: Low-frequency reinforcement near the cutoff.
 *   **Tilt EQ**: Balances lows and highs after saturation.
@@ -87,14 +90,31 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 
 ## Changelog
 
+### v2.0.0
+
+**Major Update (DSP & UI Overhaul)**
+* **Core DSP Engine (Zero-Delay):** Complete replacement of the filter architecture (Low Cut, High Cut, Tilt EQ, Bump). The plugin now utilizes SVF (State Variable Filter) and TPT (Topology Preserving Transform) topologies, ensuring absolute phase stability and entirely eliminating "zipper" noise during parameter sweeps.
+* **Math-Accurate Saturation Models:** Completely rewritten formulas for all 5 distortion engines (Soft, Even, Clip, Warm, Odd). Solved all volume drop issues: there is now strict internal DC offset compensation and perfect Unity Gain when Drive is at 0.
+* **Polyphase IIR Oversampling:** The legacy FIR anti-aliasing system has been replaced by a high-performance 12th-order Polyphase IIR engine (2x and 4x). It guarantees steeper transitions against aliasing while keeping transients clean and defined without digital ringing.
+* **Analog Drift (TMT):** Introduced Tolerance Modeling Technology. A subtle virtual analog tolerance (0.5% - 0.8%) is now applied independently to the Left and Right channels, simulating real hardware imperfections and providing a more organic stereo image.
+* **CPU Optimization (Fast Math):** Removed heavy exponential calculations from the main per-sample audio block. The plugin is now exceptionally CPU-friendly and can be easily used across dozens of tracks in a mix.
+* **GUI Modernization:** Fully redesigned user interface. Features a new "Soft Dark" theme, illuminated Value Arcs on knobs with standard 7-to-5 hardware excursion, flat buttons, and logical color-coding (Amber for saturation, Green for filters and utility) for immediate visual feedback. Fixed default Mix level to 100%.
+
 ### v1.1.0
 
-*   Bag fixes and improvements.
+*   Bug fixes and improvements.
 *   Oversampling options: 1x, 2x, 4x with FIR anti-aliasing (HQ 17-tap).
 
 ### v1.0.0
 * Initial release.
 * Current release with scalable UI and 5 saturation modes.
+
+
+## Support Development
+
+If you find my scripts useful and want to support their development, you can buy me a coffee on Ko-fi:
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-orange?style=flat-square&logo=ko-fi)](https://ko-fi.com/floopsreaperscripts)
 
 ## Author
 

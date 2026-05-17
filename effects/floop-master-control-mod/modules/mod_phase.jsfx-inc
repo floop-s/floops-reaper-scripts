@@ -1,0 +1,111 @@
+@init
+
+// Floop Master Control - Phase Correlation Bar Module
+// @author Floop-s
+
+function mod_phase_init(slot_id, mem_start, mem_size) local(ptr) (
+  ptr = mem_start;
+  this.slot_id = slot_id;
+  this.mem = mem_start;
+  
+  this.corr_srate = srate;
+  this.corr_coef = 1.0 - exp(-1.0 / (this.corr_srate * 0.05));
+  this.corr_acc_ll = 0;
+  this.corr_acc_rr = 0;
+  this.corr_acc_lr = 0;
+  this.corr_smooth = 0;
+);
+
+function mod_phase_reset() (
+  this.corr_srate = srate;
+  this.corr_coef = 1.0 - exp(-1.0 / (this.corr_srate * 0.05));
+  this.corr_acc_ll = 0;
+  this.corr_acc_rr = 0;
+  this.corr_acc_lr = 0;
+  this.corr_smooth = 0;
+);
+
+function mod_phase_sample(l, r) (
+  this.corr_acc_ll += ((l * l) - this.corr_acc_ll) * this.corr_coef;
+  this.corr_acc_rr += ((r * r) - this.corr_acc_rr) * this.corr_coef;
+  this.corr_acc_lr += ((l * r) - this.corr_acc_lr) * this.corr_coef;
+);
+
+function mod_phase_gfx(x, y, w, h, scale) local(title_h, top_pad, bottom_pad, pc_x, pc_y, pc_w, pc_h, bar_w, bar_h, bar_x, bar_y, tw_m1, th_m1, tw_p1, th_p1, label_margin, ti, tx, c_val, cr, cg, cb, marker_x, cw, ch) (
+  // Background
+  gfx_r=c_panel_r; gfx_g=c_panel_g; gfx_b=c_panel_b; gfx_a=1;
+  gfx_rect(x, y, w, h);
+  gfx_r=c_panel_edge_r; gfx_g=c_panel_edge_g; gfx_b=c_panel_edge_b; gfx_a=1;
+  gfx_line(x, y, x+w, y);
+  gfx_line(x, y+h, x+w, y+h);
+  gfx_line(x, y, x, y+h);
+  gfx_line(x+w, y, x+w, y+h);
+  
+  title_h = 0;
+  top_pad = max(4, floor(6 * scale));
+  bottom_pad = max(4, floor(6 * scale));
+
+  pc_x = x + floor(10 * scale);
+  pc_y = y + top_pad;
+  pc_w = w - floor(20 * scale);
+  pc_h = h - top_pad - bottom_pad;
+  
+  gfx_setfont(1, #font_ui, f_sz_small);
+  gfx_measurestr("-1", tw_m1, th_m1);
+  gfx_measurestr("+1", tw_p1, th_p1);
+  label_margin = max(tw_m1, tw_p1) + floor(8 * scale);
+
+  bar_w = pc_w - (label_margin * 2);
+  bar_w < 10 ? bar_w = 10;
+  
+  bar_x = pc_x + (pc_w - bar_w) * 0.5;
+  bar_h = floor(14 * scale);
+  
+  bar_y = pc_y + (pc_h - bar_h) * 0.5;
+
+  gfx_gradrect(bar_x, bar_y, bar_w, bar_h, 1, 0, 0, 0.2, -1/bar_w, 1/bar_w, 0, 0);
+  
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.10;
+  gfx_line(bar_x + bar_w*0.5, bar_y, bar_x + bar_w*0.5, bar_y + bar_h);
+  gfx_line(bar_x, bar_y + bar_h*0.5, bar_x + bar_w, bar_y + bar_h*0.5);
+
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.08;
+  ti = 0;
+  loop(9,
+    tx = bar_x + (ti/8) * bar_w;
+    gfx_line(tx, bar_y, tx, bar_y + bar_h);
+    ti += 1;
+  );
+
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.55;
+  gfx_x = bar_x - tw_m1 - floor(4 * scale);
+  gfx_y = bar_y + (bar_h - th_m1) * 0.5;
+  gfx_drawstr("-1");
+  gfx_x = bar_x + bar_w + floor(4 * scale);
+  gfx_y = bar_y + (bar_h - th_p1) * 0.5;
+  gfx_drawstr("+1");
+
+  denom = sqrt(this.corr_acc_ll * this.corr_acc_rr) + 0.000000000001;
+  this.corr_smooth = this.corr_acc_lr / denom;
+
+  c_val = this.corr_smooth;
+  c_val > 1 ? c_val = 1;
+  c_val < -1 ? c_val = -1;
+  c_val > 0.5 ? (cr = 0.20; cg = 0.85; cb = 0.40;) :
+  c_val > 0.2 ? (cr = 0.90; cg = 0.80; cb = 0.20;) :
+  c_val < 0 ? (cr = 0.90; cg = 0.20; cb = 0.20;) :
+               (cr = 0.90; cg = 0.50; cb = 0.20;);
+               
+  gfx_r=cr; gfx_g=cg; gfx_b=cb; gfx_a=1;
+  marker_x = bar_x + (bar_w*0.5) + (c_val * (bar_w*0.5));
+  gfx_rect(marker_x - floor(3 * scale), bar_y - floor(2 * scale), floor(6 * scale), bar_h + floor(4 * scale));
+
+  sprintf(#corr_val, "%+.2f", this.corr_smooth);
+  
+  gfx_setfont(1, #font_ui, max(f_sz_norm, floor(14 * scale))); 
+  gfx_measurestr(#corr_val, cw, ch);
+  gfx_x = bar_x + bar_w - cw; 
+  gfx_y = bar_y - ch - floor(4 * scale);
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.6; 
+  gfx_drawstr(#corr_val);
+);

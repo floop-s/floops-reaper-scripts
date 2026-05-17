@@ -1,7 +1,15 @@
 desc:Floop Chrominator (Stereo Analog Saturator)
-// @version 1.1.0
+// @version 2.0.0
 // @author Floop-s
 // @license GPL-3.0
+// @changelog
+//   + DSP Rewrite: Zero-Delay Feedback (ZDF) filters and math-accurate saturation models
+//   + Anti-Aliasing: High-performance 12th-order Polyphase IIR Oversampling (2x/4x)
+//   + Analog Drift (TMT): Added subtle L/R variance for organic stereo imaging
+//   + GUI Overhaul: Modern dark theme, colored value arcs, and cleaner layout
+//   + Performance: Optimized CPU usage with Fast-Math block evaluation
+//   # Fix: Mix default is now 100%
+//   # Fix: Perfect Unity Gain at 0 Drive (no volume drops)
 // @about
 //   Stereo analog saturator with five selectable modes:
 //   Soft, Even, Clip, Warm, and Odd.
@@ -26,7 +34,7 @@ out_pin: Right
 slider1:0<0,4,1{Soft,Even,Clip,Warm,Odd}>Mode
 slider2:0<0,10,0.01>Drive
 slider3:0<-1,1,0.01>Tone (Tilt)
-slider4:50<0,100,0.1>Mix (Wet %)
+slider4:100<0,100,0.1>Mix (Wet %)
 slider5:0<0,1,1{Off,On}>Punish (+20 dB)
 slider6:0<0,2,1{1x,2x,4x}>Oversampling
 slider7:20<20,400,1>Low Cut (Hz)
@@ -35,7 +43,7 @@ slider9:0<0,1,1{Gentle,Sharp}>High Cut Slope
 slider10:0<0,1,1{Off,On}>Bump (Head Bump)
 slider11:0<-24,24,0.1>Output (dB)
 slider12:1<0,1,1{Off,On}>Auto-Gain
-slider13:0<0,1,1{Off,On}>HQ Oversampling
+slider13:0<0,1,1{Off,On}>HQ Oversampling // Kept for UI compatibility, but Polyphase is always HQ
 slider14:10<0,250,1>Smoothing (ms)
 
 options:no_meter
@@ -50,47 +58,19 @@ sliders_showing = slider_show(UI_SLIDER_MASK, 0) > 0;
 w_hp_fc = 20;
 w_lp_fc = 12000;
 ag_apply_tau = 0.10;
-// Soft Saturation Parameters
-kneeA = 0.35; // Knee softness
-biasA = 0.02; // Initial DC Bias
-tanh_biasA = 0.0; // Tanh offset compensation
-
-// Even Saturation Parameters (Even Harmonics)
-biasE = 0.04; 
-a2E_even = 0.25; // Quadratic term weight (even harmonics)
-kE_comp = 0.35; // Gain compensation
-kneeE_cubic = 0.08; // Cubic term weight
-tanh_biasE = 0.0;
-
-// Clip Saturation Parameters
-kN_comp = 0.30; // Clip gain compensation
-
-// Warm Saturation Parameters
-biasT = 0.03; 
-kneeT_comp = 0.35; // Warm gain compensation
-
-// Odd Saturation Parameters
-kP_comp = 0.55; // Odd gain compensation
 odd_hp_fc = 40;
 
 // High Cut after saturation (up to 5 poles for Steep)
 hc1L = 0; hc1R = 0; hc2L = 0; hc2R = 0; hc3L = 0; hc3R = 0; hc4L = 0; hc4R = 0; hc5L = 0; hc5R = 0;
 
-// half‑band FIR coeffs
-// 9‑tap (classic): good CPU/quality balance
-hb9_c0 = -0.016; hb9_c2 = 0.1212; hb9_c4 = 0.5; hb9_c6 = 0.1212; hb9_c8 = -0.016;
-// Memory allocation for FIR buffers 
-// Assuming freemem starts after variables
-hb9L = 0; 
-hb9R = 100; // arbitrary safe space
-hb17L = 200;
-hb17R = 300;
-
-// 17‑tap (HQ): lower aliasing, slightly higher CPU
-hb17_c0 = -0.001; hb17_c2 = 0.009; hb17_c4 = -0.03; hb17_c6 = 0.073; hb17_c8 = 0.5; hb17_c10 = 0.073; hb17_c12 = -0.03; hb17_c14 = 0.009; hb17_c16 = -0.001;
-
 // warm‑up flag for first sample
 first_run = 1;
+
+// --- TMT (Tolerance Modeling Technology) ---
+tmt_fc_L = 0.992 + rand()*0.016; // +/- 0.8%
+tmt_fc_R = 0.992 + rand()*0.016;
+tmt_gain_L = 0.995 + rand()*0.010; // +/- 0.5%
+tmt_gain_R = 0.995 + rand()*0.010;
 
 // initialize coefficients and states from sliders to avoid silence
 mode = slider1|0;
@@ -111,585 +91,133 @@ hq_os = slider13|0;
 sm_ms = slider14;
 xf_ms = 20; // 20ms crossfade to avoid clicks during mode changes
 // small constants for numerical safety
-tiny_guard = 10^(-12); // used as safe epsilon for denominators / comparisons
-tiny_denorm = 10^(-24); // threshold under which we zero filter states to avoid denormals
+tiny_guard = 10^(-12); 
+tiny_denorm = 10^(-24); 
 
 function denorm_protect(x) ( abs(x) < tiny_denorm ? 0 : x );
 
+// SVF TPT (Zero-Delay) Filter Functions
+function svf_set(freq, Q) instance(g, k, a1, a2, a3) (
+  g = tan($pi * freq / srate);
+  k = 1.0 / Q;
+  a1 = 1.0 / (1.0 + g * (g + k));
+  a2 = g * a1;
+  a3 = g * a2;
+);
+function svf_hp(x) instance(g, k, a1, a2, a3, ic1, ic2) local(v3, v1, v2) (
+  v3 = x - ic2; v1 = a1 * ic1 + a2 * v3; v2 = ic2 + a2 * ic1 + a3 * v3;
+  ic1 = 2.0 * v1 - ic1; ic2 = 2.0 * v2 - ic2;
+  x - k * v1 - v2;
+);
+function svf_lp(x) instance(g, k, a1, a2, a3, ic1, ic2) local(v3, v1, v2) (
+  v3 = x - ic2; v1 = a1 * ic1 + a2 * v3; v2 = ic2 + a2 * ic1 + a3 * v3;
+  ic1 = 2.0 * v1 - ic1; ic2 = 2.0 * v2 - ic2;
+  v2;
+);
+function svf_bp(x) instance(g, k, a1, a2, a3, ic1, ic2) local(v3, v1, v2) (
+  v3 = x - ic2; v1 = a1 * ic1 + a2 * v3; v2 = ic2 + a2 * ic1 + a3 * v3;
+  ic1 = 2.0 * v1 - ic1; ic2 = 2.0 * v2 - ic2;
+  v1;
+);
+
+// 1-Pole TPT Filter Functions
+function tpt1_set_os(freq, sr) instance(g) ( g = tan($pi * freq / sr); );
+function tpt1_set(freq) instance(g) ( g = tan($pi * freq / srate); );
+function tpt1_lp(x) instance(g, ic) local(v, lp) (
+  v = (x - ic) * g / (1.0 + g); lp = v + ic; ic = lp + v;
+  lp;
+);
+function tpt1_hp(x) instance(g, ic) local(v, lp) (
+  v = (x - ic) * g / (1.0 + g); lp = v + ic; ic = lp + v;
+  x - lp;
+);
+
+// --- POLYPHASE IIR OVERSAMPLING ---
+function ap(x, c) instance(z) local(y) (
+  y = c * x + z; z = x - c * y; y;
+);
+function os_up_2x(x) instance(a0,a1,a2, a3,a4,a5) local(y0, y1) (
+  y0 = a0.ap(x, 0.032533036814);
+  y0 = a1.ap(y0, 0.315998188001);
+  y0 = a2.ap(y0, 0.760143834015);
+  y1 = a3.ap(x, 0.144414324838);
+  y1 = a4.ap(y1, 0.536979685651);
+  y1 = a5.ap(y1, 0.932974441223);
+  this.out0 = y0; this.out1 = y1;
+);
+function os_down_2x(s0, s1) instance(a0,a1,a2, a3,a4,a5, prev_s1) local(y0, y1) (
+  y0 = a0.ap(s0, 0.032533036814);
+  y0 = a1.ap(y0, 0.315998188001);
+  y0 = a2.ap(y0, 0.760143834015);
+  y1 = a3.ap(prev_s1, 0.144414324838);
+  y1 = a4.ap(y1, 0.536979685651);
+  y1 = a5.ap(y1, 0.932974441223);
+  prev_s1 = s1;
+  0.5 * (y0 + y1);
+);
+function os_up_4x(x) instance(up1, up2) (
+  up1.os_up_2x(x);
+  up2.os_up_2x(up1.out0); this.out0 = up2.out0; this.out1 = up2.out1;
+  up2.os_up_2x(up1.out1); this.out2 = up2.out0; this.out3 = up2.out1;
+);
+function os_down_4x(s0, s1, s2, s3) instance(dn1, dn2) local(d0, d1) (
+  d0 = dn1.os_down_2x(s0, s1);
+  d1 = dn1.os_down_2x(s2, s3);
+  dn2.os_down_2x(d0, d1);
+);
+
+// --- SATURATION MODELS ---
+function saturate_soft(x) local(e) (
+  x = min(8, max(-8, x)); e = exp(2 * x);
+  (e - 1) / (e + 1);
+);
+function saturate_even(x) local(bias, e, y) (
+  bias = 0.6; x = min(8, max(-8, x + bias)); e = exp(2 * x);
+  y = (e - 1) / (e + 1);
+  (y - 0.537049) * 1.408; 
+);
+function saturate_clip(x) local(ax) (
+  ax = abs(x);
+  ax <= 1.0 ? ( x * (1.0 - 0.3333333 * x * x) ) : ( x > 0 ? 0.6666667 : -0.6666667 );
+);
+function saturate_warm(x) (
+  x > 0 ? ( x / (1.0 + 1.2 * x) ) : ( x / (1.0 - 0.6 * x) );
+);
+function saturate_odd(x) local(ax) (
+  ax = abs(x);
+  x * (1.0 + 0.1 * ax) / (1.0 + ax + 0.1 * ax * ax); 
+);
+
 function reset_audio_states() ( 
-   // Reset Filters (Low Cut, High Cut, Tilt, Saturation) 
-   lc_lpL = lc_lpR = lc2_lpL = lc2_lpR = 0; 
-   th_lpL = th_lpR = 0; 
-   tilt_lpL = tilt_lpR = 0; 
-   roll_lpL = roll_lpR = 0; 
-   preA_lpL = preA_lpR = 0; 
-   postE_lpL = postE_lpR = 0; 
-   postN_lpL = postN_lpR = 0; 
-   odd_lpL = odd_lpR = 0; 
+   lc1L.ic1 = lc1L.ic2 = lc1R.ic1 = lc1R.ic2 = 0;
+   lc2L.ic1 = lc2L.ic2 = lc2R.ic1 = lc2R.ic2 = 0;
+   hc1L.ic1 = hc1L.ic2 = hc1R.ic1 = hc1R.ic2 = 0;
+   hc2L.ic1 = hc2L.ic2 = hc2R.ic1 = hc2R.ic2 = 0;
+   thL.ic1 = thL.ic2 = thR.ic1 = thR.ic2 = 0;
    
-   // Reset multi-pole High Cut stages 
-   hc1L=hc1R=hc2L=hc2R=hc3L=hc3R=hc4L=hc4R=hc5L=hc5R=0; 
-   
-   // Reset FIR Oversampling buffers 
-   // Use memset for efficient zeroing 
-   memset(hb17L, 0, 17); 
-   memset(hb17R, 0, 17); 
-   memset(hb9L, 0, 9); 
-   memset(hb9R, 0, 9); 
+   tiltL.ic = tiltR.ic = 0;
+   preAL.ic = preAR.ic = 0;
+   postEL.ic = postER.ic = 0;
+   postNL.ic = postNR.ic = 0;
+   oddL.ic = oddR.ic = 0;
+   w_in_lpL = w_in_lpR = w_in_lp2L = w_in_lp2R = 0;
+   w_out_lpL = w_out_lpR = 0;
    
    prevL = prevR = out_prevL = out_prevR = 0; 
-   // Reset Auto-Gain accumulators 
    in_msL = in_msR = out_msL = out_msR = 0; 
    ag_smooth = 1; ag_apply_state = 1; 
+   
+   // Reset oversampling states
+   up2x_L.a0.z = up2x_L.a1.z = up2x_L.a2.z = up2x_L.a3.z = up2x_L.a4.z = up2x_L.a5.z = 0;
+   up2x_R.a0.z = up2x_R.a1.z = up2x_R.a2.z = up2x_R.a3.z = up2x_R.a4.z = up2x_R.a5.z = 0;
+   dn2x_L.a0.z = dn2x_L.a1.z = dn2x_L.a2.z = dn2x_L.a3.z = dn2x_L.a4.z = dn2x_L.a5.z = dn2x_L.prev_s1 = 0;
+   dn2x_R.a0.z = dn2x_R.a1.z = dn2x_R.a2.z = dn2x_R.a3.z = dn2x_R.a4.z = dn2x_R.a5.z = dn2x_R.prev_s1 = 0;
+   
    first_run = 1; 
  ); 
  
  reset_audio_states();
 
-function saturate_soft(x) local(c, xa, e) (
-  // Soft-knee tanh saturator
-  c = 1 + kneeA*abs(x);
-  xa = (x/c) + biasA;
-  xa = min(6, max(-6, xa));
-  e = exp(2*xa);
-  (e - 1) / (e + 1) - tanh_biasA;
-);
-
-function saturate_even(x) local(xe, e, b, s, k) (
-  xe = min(6, max(-6, x + biasE));
-  e = exp(2*xe);
-  b = (e - 1)/(e + 1) - tanh_biasE;
-  s = b + a2E_even*x*abs(x) + kneeE_cubic*x*x*x;
-  k = 1 + kE_comp*abs(s);
-  s / k;
-);
-
-function saturate_clip(x) local(thp, thrn, hc, s) (
-  thp = 0.95; thrn = 1.05;
-  hc = min(thp, max(-thrn, x));
-  s = hc - 0.15*hc*hc*hc;
-  s / (1 + kN_comp*abs(s));
-);
-
-function saturate_warm(x) local(xt, s, k) (
-  xt = x + biasT;
-  s = 0.35*xt + 0.40*xt*abs(xt) + 0.25*xt*xt*xt;
-  k = 1 + kneeT_comp*abs(s);
-  s / k;
-);
-
-function saturate_odd(x, lp_state) local(xh, xp, ep, base, s, a3, a5) (
-  // Note: lp_state must be passed by reference or managed externally if it changes
-  // Here we assume the HP filter is applied before or externally for simplicity, 
-  // or we integrate the simple high-pass filter here.
-  // Since odd_lpL/R were global, for now we keep them in the main loop
-  // and pass x already filtered or handle the filter outside.
-  // FOR NOW: we implement only the shaping part, leaving the filter in the loop.
-  
-  xp = min(6, max(-6, x));
-  ep = exp(2*xp); base = (ep - 1) / (ep + 1);
-  a3 = 0.28; a5 = -0.06;
-  s = base + a3*xp*xp*xp + a5*xp*xp*xp*xp*xp;
-  s / (1 + kP_comp*abs(s));
-);
-
-@sample
-dryL = spl0; dryR = spl1;
-
-drive_s = drive_s*sm_a + drive*sm_alpha;
-tone_s = tone_s*sm_a + tone*sm_alpha;
-mix_s = mix_s*sm_a + mix*sm_alpha;
-out_db_s = out_db_s*sm_a + out_db*sm_alpha;
-
-// per-sample sync of critical controls to ensure audio engagement even if @slider didn't fire
-punish = slider5|0;
-pre_gain = punish ? 10^(20/20) : 1;
-thump_on = slider10|0;
-sharp_slope = slider9|0;
-lc_freq = max(20, slider7);
-hc_freq = min(slider8, srate*0.49);
-// recompute low/high cut coefficients only when frequency changed
-lc_freq != prev_lc_freq ? (
-  lc_a = exp(-2*$pi*lc_freq/srate);
-  lc_alpha = 1 - lc_a;
-  prev_lc_freq = lc_freq;
-);
-hc_freq != prev_hc_freq ? (
-  hc_a = exp(-2*$pi*hc_freq/srate);
-  hc_alpha = 1 - hc_a;
-  prev_hc_freq = hc_freq;
-);
-mode = slider1|0;
-hr_freq = (mode==0)?10000:(mode==1)?12000:(mode==2)?15000:(mode==3)?11000:18000;
-hr_freq = min(hr_freq, srate*0.49);
-mode != prev_mode ? (
-  hr_a = exp(-2*$pi*hr_freq/srate);
-  hr_alpha = 1 - hr_a;
-  prev_mode = mode;
-);
-os_sel = slider6|0;
-os_factor = (os_sel==0)?1:(os_sel==1)?2:4;
-hq_os = slider13|0;
-ag_on = slider12|0;
-
-chg = (prev_punish != punish) || (prev_thump_on != thump_on) || (prev_sharp_slope != sharp_slope) || (prev_mode != mode) || (prev_os_sel != os_sel) || (prev_hq_os != hq_os) || (prev_ag_on != ag_on);
-chg ? (
-  out_oldL = out_prevL; out_oldR = out_prevR;
-  xf_pos = 0; xf_len = max(1, floor(xf_ms*srate));
-  prev_punish = punish;
-  prev_thump_on = thump_on;
-  prev_sharp_slope = sharp_slope;
-  prev_mode = mode;
-  prev_os_sel = os_sel;
-  prev_hq_os = hq_os;
-  // if Auto‑Gain was toggled, reset AG smoothing/RMS to safe values to avoid muting
-  (prev_ag_on != ag_on) ? ( 
-     // Full reset of accumulators when Auto-Gain is toggled
-     // to avoid using previous audio history 
-     in_msL = in_msR = out_msL = out_msR = 0; 
-     ag_smooth = 1; 
-   );
-  prev_ag_on = ag_on;
-);
-
-// Low Cut before the saturation stage
-  lc_lpL = lc_lpL*lc_a + dryL*lc_alpha;
-  lc_lpL = denorm_protect(lc_lpL);
-  lc_lpR = lc_lpR*lc_a + dryR*lc_alpha;
-  lc_lpR = denorm_protect(lc_lpR);
-  // when 'Sharp' is active (sharp_slope), run a second pole to increase LC slope
-  sharp_slope ? (
-    lc2_lpL = lc2_lpL*lc_a + lc_lpL*lc_alpha; lc2_lpL = denorm_protect(lc2_lpL);
-    lc2_lpR = lc2_lpR*lc_a + lc_lpR*lc_alpha; lc2_lpR = denorm_protect(lc2_lpR);
-    hpL = dryL - lc2_lpL;
-    hpR = dryR - lc2_lpR;
-  ) : (
-    hpL = dryL - lc_lpL;
-    hpR = dryR - lc_lpR;
-  );
-// Bump (head bump) at the cutoff
-  th_lpL = th_lpL*lc_a + dryL*lc_alpha;
-  th_lpL = denorm_protect(th_lpL);
-  th_lpR = th_lpR*lc_a + dryR*lc_alpha;
-  th_lpR = denorm_protect(th_lpR);
-th_gain = thump_on ? 10^(3/20) : 1;
-dryL = hpL + (thump_on ? (th_gain - 1)*th_lpL : 0);
-dryR = hpR + (thump_on ? (th_gain - 1)*th_lpR : 0);
-
-// pre‑emphasis for mode Soft: low shelf (head bump)
-mode == 0 ? (
-  preA_lpL = preA_lpL*preA_a + dryL*preA_alpha;
-  preA_lpL = denorm_protect(preA_lpL);
-  preA_lpR = preA_lpR*preA_a + dryR*preA_alpha;
-  preA_lpR = denorm_protect(preA_lpR);
-  dryL = preA_lpL*preA_gain + (dryL - preA_lpL);
-  dryR = preA_lpR*preA_gain + (dryR - preA_lpR);
-);
-
-accL = 0; accR = 0;
-i = 0;
-while(i < os_factor) (
-  t = (i+1)/os_factor;
-  inL = prevL + (dryL - prevL)*t;
-  inR = prevR + (dryR - prevR)*t;
-
-  xL = inL * (drive_s + 0.000001) * pre_gain;
-  xR = inR * (drive_s + 0.000001) * pre_gain;
-  
-  mode == 0 ? ( 
-    yL = saturate_soft(xL); 
-    yR = saturate_soft(xR); 
-  );
-  
-  mode == 1 ? (
-    yL = saturate_even(xL);
-    yR = saturate_even(xR);
-  );
-  
-  mode == 2 ? (
-    yL = saturate_clip(xL);
-    yR = saturate_clip(xR);
-  );
-  
-  mode == 3 ? (
-    yL = saturate_warm(xL);
-    yR = saturate_warm(xR);
-  );
-  
-  mode == 4 ? (
-    // Specific handling for Odd filter (High-pass pre-saturation)
-    odd_lpL = odd_lpL*odd_hp_a + xL*odd_hp_alpha; odd_lpL = denorm_protect(odd_lpL);
-    odd_lpR = odd_lpR*odd_hp_a + xR*odd_hp_alpha; odd_lpR = denorm_protect(odd_lpR);
-    xLh = xL - odd_lpL; 
-    xRh = xR - odd_lpR;
-    
-    yL = saturate_odd(xLh, 0);
-    yR = saturate_odd(xRh, 0);
-  );
-
-  accL += yL; accR += yR;
-  i += 1;
-);
-
-prevL = dryL; prevR = dryR;
-
-satL = accL / os_factor; satR = accR / os_factor;
-
-// Half‑band FIR smoothing when OS>1 (anti‑aliasing approximation) 
- os_factor > 1 ? ( 
-   hq_os ? ( // 17-tap FIR 
-     i = 16; while (i > 0) ( hb17L[i] = hb17L[i-1]; hb17R[i] = hb17R[i-1]; i -= 1; ); 
-     hb17L[0] = satL; hb17R[0] = satR; 
-     
-     satL = hb17_c0*hb17L[0] + hb17_c2*hb17L[2] + hb17_c4*hb17L[4] + hb17_c6*hb17L[6] + hb17_c8*hb17L[8] + hb17_c10*hb17L[10] + hb17_c12*hb17L[12] + hb17_c14*hb17L[14] + hb17_c16*hb17L[16]; 
-     satR = hb17_c0*hb17R[0] + hb17_c2*hb17R[2] + hb17_c4*hb17R[4] + hb17_c6*hb17R[6] + hb17_c8*hb17R[8] + hb17_c10*hb17R[10] + hb17_c12*hb17R[12] + hb17_c14*hb17R[14] + hb17_c16*hb17R[16]; 
-   ) : ( 
-     // 9-tap FIR 
-     i = 8; while (i > 0) ( hb9L[i] = hb9L[i-1]; hb9R[i] = hb9R[i-1]; i -= 1; ); 
-     hb9L[0] = satL; hb9R[0] = satR; 
- 
-     satL = hb9_c0*hb9L[0] + hb9_c2*hb9L[2] + hb9_c4*hb9L[4] + hb9_c6*hb9L[6] + hb9_c8*hb9L[8]; 
-     satR = hb9_c0*hb9R[0] + hb9_c2*hb9R[2] + hb9_c4*hb9R[4] + hb9_c6*hb9R[6] + hb9_c8*hb9R[8]; 
-   ); 
- );
- 
- tilt_lpL = tilt_lpL*tilt_a + satL*tilt_alpha;
- tilt_lpL = denorm_protect(tilt_lpL);
- tilt_lpR = tilt_lpR*tilt_a + satR*tilt_alpha;
- tilt_lpR = denorm_protect(tilt_lpR);
- tilt_highL = satL - tilt_lpL;
- tilt_highR = satR - tilt_lpR;
- low_g = 1 - tone_s; high_g = 1 + tone_s;
- toneL = tilt_lpL*low_g + tilt_highL*high_g;
- toneR = tilt_lpR*low_g + tilt_highR*high_g;
- 
- // [SUGGESTION] Removed redundant 'roll_lp' filter. 
- // The 'hc_freq' filter already offers sufficient control. 
- wetL = toneL; wetR = toneR;
- 
- // post‑saturation High Cut with selectable slope
- first_run ? (
-   hc1L = wetL; hc1R = wetR;
-   hc2L = hc1L; hc2R = hc1R;
-   hc3L = hc2L; hc3R = hc2R;
-   hc4L = hc3L; hc4R = hc3R;
-   hc5L = hc4L; hc5R = hc4R;
-   first_run = 0;
- );
-hc1L = hc1L*hc_a + wetL*hc_alpha; hc1L = denorm_protect(hc1L);
-hc1R = hc1R*hc_a + wetR*hc_alpha; hc1R = denorm_protect(hc1R);
-sharp_slope ? (
-  hc2L = hc2L*hc_a + hc1L*hc_alpha; hc2L = denorm_protect(hc2L);
-  hc2R = hc2R*hc_a + hc1R*hc_alpha; hc2R = denorm_protect(hc2R);
-  hc3L = hc3L*hc_a + hc2L*hc_alpha; hc3L = denorm_protect(hc3L);
-  hc3R = hc3R*hc_a + hc2R*hc_alpha; hc3R = denorm_protect(hc3R);
-  hc4L = hc4L*hc_a + hc3L*hc_alpha; hc4L = denorm_protect(hc4L);
-  hc4R = hc4R*hc_a + hc3R*hc_alpha; hc4R = denorm_protect(hc4R);
-  hc5L = hc5L*hc_a + hc4L*hc_alpha; hc5L = denorm_protect(hc5L);
-  hc5R = hc5R*hc_a + hc4R*hc_alpha; hc5R = denorm_protect(hc5R);
-  wetL = hc5L; wetR = hc5R; // ~30 dB/oct with 5 poles
-) : (
-  wetL = hc1L; wetR = hc1R; // ~6 dB/oct
-);
-
-// specific post‑emphasis
-// Even: gentle high‑shelf
-mode == 1 ? (
-  postE_lpL = postE_lpL*postE_a + wetL*postE_alpha;
-  postE_lpL = denorm_protect(postE_lpL);
-  postE_lpR = postE_lpR*postE_a + wetR*postE_alpha;
-  postE_lpR = denorm_protect(postE_lpR);
-  wetL = postE_lpL + (wetL - postE_lpL)*postE_gain;
-  wetR = postE_lpR + (wetR - postE_lpR)*postE_gain;
-);
-// Clip: presence shelf
-mode == 2 ? (
-  postN_lpL = postN_lpL*postN_a + wetL*postN_alpha;
-  postN_lpL = denorm_protect(postN_lpL);
-  postN_lpR = postN_lpR*postN_a + wetR*postN_alpha;
-  postN_lpR = denorm_protect(postN_lpR);
-  wetL = postN_lpL + (wetL - postN_lpL)*postN_gain;
-  wetR = postN_lpR + (wetR - postN_lpR)*postN_gain;
-);
-
-outL = mix_s*wetL + (1 - mix_s)*dryL;
-outR = mix_s*wetR + (1 - mix_s)*dryR;
-
-xf_len > 0 && xf_pos < xf_len ? (
-  x = xf_pos/xf_len;
-  outL = out_oldL*(1 - x) + outL*x;
-  outR = out_oldR*(1 - x) + outR*x;
-  xf_pos += 1;
-);
-
-w_in_lpL = w_in_lpL*w_hp_a + dryL*w_hp_alpha; w_in_lpL = denorm_protect(w_in_lpL); in_hpL = dryL - w_in_lpL; w_in_lp2L = w_in_lp2L*w_lp_a + in_hpL*w_lp_alpha; w_in_lp2L = denorm_protect(w_in_lp2L); in_wL = w_in_lp2L;
-w_in_lpR = w_in_lpR*w_hp_a + dryR*w_hp_alpha; w_in_lpR = denorm_protect(w_in_lpR); in_hpR = dryR - w_in_lpR; w_in_lp2R = w_in_lp2R*w_lp_a + in_hpR*w_lp_alpha; w_in_lp2R = denorm_protect(w_in_lp2R); in_wR = w_in_lp2R;
-w_out_lpL = w_out_lpL*w_hp_a + outL*w_hp_alpha; w_out_lpL = denorm_protect(w_out_lpL); out_hpL = outL - w_out_lpL; w_out_lp2L = w_out_lp2L*w_lp_a + out_hpL*w_lp_alpha; w_out_lp2L = denorm_protect(w_out_lp2L); out_wL = w_out_lp2L;
-w_out_lpR = w_out_lpR*w_hp_a + outR*w_hp_alpha; w_out_lpR = denorm_protect(w_out_lpR); out_hpR = outR - w_out_lpR; w_out_lp2R = w_out_lp2R*w_lp_a + out_hpR*w_lp_alpha; w_out_lp2R = denorm_protect(w_out_lp2R); out_wR = w_out_lp2R;
-// Apply DC Blocker to output
-outL = out_hpL; outR = out_hpR;
-in_msL = in_msL*ag_a + in_wL*in_wL*ag_alpha;
-in_msR = in_msR*ag_a + in_wR*in_wR*ag_alpha;
-out_msL = out_msL*ag_a + out_wL*out_wL*ag_alpha;
-out_msR = out_msR*ag_a + out_wR*out_wR*ag_alpha;
-in_avg = 0.5 * (in_msL + in_msR); 
-out_avg = 0.5 * (out_msL + out_msR) + tiny_guard; 
- 
-// Target calculation with additional protection 
-// If input is below guard threshold, do not compensate volume 
-target_ag = in_avg > tiny_guard ? sqrt(in_avg / out_avg) : 1; 
- 
-// Limit instantaneous max gain before smoothing to avoid jumps 
-target_ag = min(ag_max, max(ag_min, target_ag)); 
- 
-// Differentiated Smoothing (Attack/Release) 
-target_ag > ag_smooth ? ( 
-  ag_smooth = ag_smooth * ag_a_att + target_ag * ag_alpha_att; 
-) : ( 
-  ag_smooth = ag_smooth * ag_a_rel + target_ag * ag_alpha_rel; 
-); 
- 
-ag = ag_smooth; 
- 
-// Calculate linear output gain
-out_lin = 10^(out_db_s / 20); 
- 
-// Smooth transition for Auto-Gain toggle 
-ag_target_apply = ag_on ? ag : 1; 
-ag_apply_state = ag_apply_state * ag_apply_a + ag_target_apply * ag_apply_alpha; 
- 
-spl0 = min(0.999, max(-0.999, outL * ag_apply_state * out_lin)); 
-spl1 = min(0.999, max(-0.999, outR * ag_apply_state * out_lin));
-
-out_prevL = outL; out_prevR = outR;
-
-@gfx 760 300
-// setup input
-mx = mouse_x; my = mouse_y; mc = mouse_cap;
-clicked = (mc & 1) && !(prev_mc & 1);
-released = !(mc & 1) && (prev_mc & 1);
-rclicked = (mc & 2) && !(prev_mc & 2);
-prev_mc = mc;
-// immediately sync UI mode to slider for correct highlight
-mode = slider1|0;
-// quick sync of simple parameters between UI and audio
-drive = max(0, slider2);
-tone = slider3;
-mix = slider4/100;
-out_db = slider11;
-ag_on = slider12|0;
-
-// background
-gfx_r = 0.08; gfx_g = 0.08; gfx_b = 0.10; gfx_a = 1; gfx_rect(0,0,gfx_w,gfx_h);
-gfx_r = 1; gfx_g = 1; gfx_b = 1;
-
-// helpers
-function clampv(v,mn,mx) ( v<mn ? mn : v>mx ? mx : v );
-function draw_ring(x,y,r,ang_norm,center_top)
-(
-  // Clean donut, neutral colors, no visual artifacts
-  gfx_a = 1; // force full alpha for stability
-  ring_t = 6; // stable ring thickness
-  // solid outer circle (ring)
-  gfx_r=0.22; gfx_g=0.22; gfx_b=0.24; gfx_circle(x,y,r,1);
-  // solid dark inner circle to create the donut
-  gfx_r=0.08; gfx_g=0.08; gfx_b=0.10; gfx_circle(x,y,r-ring_t,1);
-  // position indicator: radial white bar that rotates with the value
-  // center_top==1: the center position (norm=0.5) maps to top
-  ring_a = -$pi/2 + 2*$pi*(center_top ? (ang_norm - 0.5) : ang_norm); // 0 at top
-  notch_ri = r - ring_t - 3; notch_ro = r - 2; // notch length
-  ring_px = -sin(ring_a); ring_py = cos(ring_a);  // perpendicular
-  gfx_r=1; gfx_g=1; gfx_b=1;
-  notch_i=-1; while(notch_i<=1)( // thickness ~3 px
-    x1 = floor(x + cos(ring_a)*notch_ri + ring_px*notch_i + 0.5);
-    y1 = floor(y + sin(ring_a)*notch_ri + ring_py*notch_i + 0.5);
-    x2 = floor(x + cos(ring_a)*notch_ro + ring_px*notch_i + 0.5);
-    y2 = floor(y + sin(ring_a)*notch_ro + ring_py*notch_i + 0.5);
-    gfx_line(x1,y1,x2,y2);
-    notch_i += 1;
-  );
-);
-function knob(id,x,y,r,label,val,vmin,vmax,unit,slider_idx,center_top)
-(
-  // draw ring
-  norm = (val - vmin)/(vmax - vmin);
-  draw_ring(x,y,r,norm,center_top);
-  // center: neutral dark disc, simple and stable
-  gfx_a = 1;
-  ring_t2 = 6; gap_g = 5; // ring thickness and inner gap
-  center_r = r - (ring_t2 + gap_g); // center radius
-  gfx_r=0.16; gfx_g=0.16; gfx_b=0.18; gfx_circle(x,y,center_r,1);
-  // light border around the center for separation
-  gfx_r=0.30; gfx_g=0.30; gfx_b=0.33; gfx_circle(x,y,center_r+1,0);
-  // label (centered)
-  gfx_r=1; gfx_g=1; gfx_b=1; gfx_measurestr(label, lab_w, lab_h); gfx_x = x - lab_w/2; gfx_y = y + r + 8; gfx_printf(label);
-  // value string centered with extra vertical spacing
-  val_oy = floor(34*(r/34) + 0.5); // spacing scales with knob size
-  (slider_idx==7 || slider_idx==8) ? (
-    sprintf(#val_str, "%d %s", floor(val+0.5), unit);
-  ) : (slider_idx==4) ? (
-    sprintf(#val_str, "%d%%", floor(val+0.5));
-  ) : (slider_idx==11) ? (
-    sprintf(#val_str, "%.1f %s", val, unit);
-  ) : (slider_idx==14) ? (
-    sprintf(#val_str, "%d %s", floor(val+0.5), unit);
-  ) : (
-    sprintf(#val_str, "%.2f %s", val, unit);
-  );
-  gfx_measurestr(#val_str, val_w, val_h);
-  gfx_x = x - val_w/2; gfx_y = y + r + val_oy; gfx_printf("%s", #val_str);
-  // hit detection
-  dx = mx - x; dy = my - y; dist = sqrt(dx*dx + dy*dy);
-  inside = dist <= (r + 8);
-  hover = inside && !(mc & 1);
-  hover ? ( gfx_r=1; gfx_g=1; gfx_b=1; gfx_circle(x,y,r-18,0); );
-  // start drag
-  ((clicked && inside) || ((mc & 1) && inside && drag_id == -1)) ? (
-    drag_id = id; drag_slider = slider_idx; drag_start_y = my; drag_start_val = val;
-  );
-  // right-click reset to defaults
-  rclicked && inside ? (
-    slider_idx==2 ? (slider2=0; sliderchange(1));
-    slider_idx==3 ? (slider3=0; sliderchange(2));
-    slider_idx==4 ? (slider4=50; sliderchange(3));
-    slider_idx==7 ? (slider7=20; sliderchange(6));
-    slider_idx==8 ? (slider8=20000; sliderchange(7));
-    slider_idx==11 ? (slider11=0; sliderchange(10));
-    slider_idx==14 ? (slider14=10; sliderchange(13));
-  );
-  // update drag
-  (mc & 1) && drag_id == id ? (
-  sens = 0.004; // drag sensitivity
-    delta = (drag_start_y - my) * (vmax - vmin) * sens;
-    newv = clampv(drag_start_val + delta, vmin, vmax);
-    slider_idx==2 ? (slider2=newv; sliderchange(1));
-    slider_idx==3 ? (slider3=newv; sliderchange(2));
-    slider_idx==4 ? (slider4=newv; sliderchange(3));
-    slider_idx==7 ? (slider7=newv; sliderchange(6));
-    slider_idx==8 ? (slider8=newv; sliderchange(7));
-    slider_idx==11 ? (slider11=newv; sliderchange(10));
-    slider_idx==14 ? (slider14=newv; sliderchange(13));
-  );
-  released && drag_id == id ? (drag_id = -1;);
-);
-function button(x,y,w,h,label,state)
-(
-  hover = mx>=x && mx<=x+w && my>=y && my<=y+h;
-  // draw background with clear state feedback
-  // On: bright green; Off: dark grey. Hover adds slight lift.
-  gfx_r = state?0.12:0.20; gfx_g = state?0.85:0.22; gfx_b = state?0.40:0.24;
-  hover ? (gfx_r+=0.03; gfx_g+=0.03; gfx_b+=0.03;);
-  gfx_rect(x,y,w,h);
-  // border
-  gfx_r=0.35; gfx_g=0.35; gfx_b=0.38; gfx_rect(x,y,w,1); gfx_rect(x,y+h-1,w,1); gfx_rect(x,y,1,h); gfx_rect(x+w-1,y,1,h);
-  // label centered
-  // On: dark text on green; Off: light text on grey
-  gfx_r = state?0.05:1; gfx_g = state?0.05:1; gfx_b = state?0.05:1;
-  // horizontal/vertical centering using accurate text measurement
-  gfx_measurestr(label, lab_w, lab_h);
-  gfx_x = x + (w - lab_w)/2;
-  gfx_y = y + (h - lab_h)/2;
-  gfx_printf(label);
-  // click handling returns 1 if pressed this frame
-  (clicked && hover) ? 1 : 0;
-);
-
-// header and scaling (layout in three rows: 1=Mode, 2=Toggles, 3=Knobs)
-gfx_r = 0.18; gfx_g = 0.18; gfx_b = 0.20; gfx_rect(0,0,gfx_w,26); // header bg
-gfx_r = 0.92; gfx_g = 0.92; gfx_b = 0.92; gfx_setfont(1, "Arial", 15);
-gfx_measurestr("Floop Chrominator", tw, th);
-gfx_x = (gfx_w - tw)/2; gfx_y = (26 - th)/2;
-gfx_printf("Floop Chrominator");
-
-// Config Button [C]
-btn_ui_w = 20; btn_ui_h = 18;
-btn_ui_x = gfx_w - 8 - btn_ui_w; btn_ui_y = 4;
-// Button Logic
-hover_c = mx >= btn_ui_x && mx <= btn_ui_x+btn_ui_w && my >= btn_ui_y && my <= btn_ui_y+btn_ui_h;
-clicked_c = hover_c && clicked;
-clicked_c ? (
-  sliders_showing = slider_show(UI_SLIDER_MASK, -1) > 0;
-);
-// Button Draw
-gfx_r=0.06; gfx_g=0.06; gfx_b=0.07; gfx_rect(btn_ui_x, btn_ui_y, btn_ui_w, btn_ui_h);
-gfx_r=0.35; gfx_g=0.35; gfx_b=0.38; gfx_rect(btn_ui_x, btn_ui_y, btn_ui_w, 1); gfx_rect(btn_ui_x, btn_ui_y+btn_ui_h-1, btn_ui_w, 1); gfx_rect(btn_ui_x, btn_ui_y, 1, btn_ui_h); gfx_rect(btn_ui_x+btn_ui_w-1, btn_ui_y, 1, btn_ui_h);
-sliders_showing ? ( gfx_r=0.14; gfx_g=0.62; gfx_b=0.32; ) : ( hover_c ? (gfx_r=0.24; gfx_g=0.24; gfx_b=0.26;) : (gfx_r=0.16; gfx_g=0.16; gfx_b=0.18;) );
-gfx_rect(btn_ui_x+1, btn_ui_y+1, btn_ui_w-2, btn_ui_h-2);
-sliders_showing ? (gfx_r=0.98; gfx_g=0.98; gfx_b=0.98;) : (gfx_r=0.90; gfx_g=0.90; gfx_b=0.90;);
-gfx_measurestr("C", cw, ch);
-gfx_x = btn_ui_x + (btn_ui_w - cw)/2; gfx_y = btn_ui_y + (btn_ui_h - ch)/2;
-gfx_printf("C");
-
-// Main UI Layout calculation
-pad=12; scale = (gfx_w/760 < gfx_h/300 ? gfx_w/760 : gfx_h/300); scale = scale<0.8?0.8:scale>3.0?3.0:scale;
-sp = floor(8*scale + 0.5);
-gap = floor(18*scale + 0.5);
-row1y=floor(44*scale + 0.5); row2y=floor(100*scale + 0.5); row3y=floor(188*scale + 0.5);
-gfx_setfont(1, "Segoe UI", floor(14*scale + 0.5));
-// gfx_x = pad + floor(6*scale + 0.5); gfx_y = 16; gfx_printf("FlOOP CHROMINATOR");
-row1y += floor(10*scale + 0.5);
-row3y += floor(12*scale + 0.5);
-row2y += floor(12*scale + 0.5);
-
-// row 1: Mode buttons centered
-bw=floor(72*scale + 0.5); bh=floor(22*scale + 0.5); totalw = 5*bw + 4*sp; bx = floor((gfx_w - totalw)/2 + 0.5); by=row1y - bh/2;
-function mode_btn(ix,label,selected)
-(
-  xx = bx + ix*(bw+6);
-  hover = mx>=xx && mx<=xx+bw && my>=by && my<=by+bh;
-  state = selected;
-  // On: bright green; Off: dark grey; slight hover highlight
-  gfx_r = state?0.12:0.20; gfx_g = state?0.85:0.22; gfx_b = state?0.40:0.24;
-  hover ? (gfx_r+=0.03; gfx_g+=0.03; gfx_b+=0.03;);
-  gfx_rect(xx,by,bw,bh);
-  // border
-  gfx_r=0.35; gfx_g=0.35; gfx_b=0.38; gfx_rect(xx,by,bw,1); gfx_rect(xx,by+bh-1,bw,1); gfx_rect(xx,by,1,bh); gfx_rect(xx+bw-1,by,1,bh);
-  // text: dark on green, light on grey
-  gfx_r = state?0.05:1; gfx_g = state?0.05:1; gfx_b = state?0.05:1;
-  // center text horizontally/vertically using accurate text measurement
-  gfx_measurestr(label, lab_w, lab_h);
-  gfx_x = xx + (bw - lab_w)/2;
-  gfx_y = by + (bh - lab_h)/2;
-  gfx_printf(label);
-  clicked && hover ? (
-    slider1=ix; sliderchange(0 + ix);
-  // Update the global variable immediately to highlight the correct button
-  mode = slider1|0;
-  );
-);
-mode_btn(0,"Soft",mode==0); mode_btn(1,"Even",mode==1); mode_btn(2,"Clip",mode==2); mode_btn(3,"Warm",mode==3); mode_btn(4,"Odd",mode==4);
-
-// row 2: control buttons centered (Punish, Bump, Sharp, AutoGain, OS, HQ)
-tw=floor(90*scale + 0.5); th=floor(26*scale + 0.5); totalw = 6*tw + 5*sp; gx = floor((gfx_w - totalw)/2 + 0.5); ty=row2y - th/2;
-button(gx,ty,tw,th,"Punish",slider5|0) ? (slider5 = 1 - (slider5|0); sliderchange(4));
-gx+=tw+8;
-  button(gx,ty,tw,th,"Bump",slider10|0) ? (slider10 = 1 - (slider10|0); sliderchange(9));
-gx+=tw+8;
-  button(gx,ty,tw,th,"Sharp",slider9|0) ? (slider9 = 1 - (slider9|0); sliderchange(8));
-gx+=tw+8;
-button(gx,ty,tw,th,"AutoGain",slider12|0) ? (slider12 = 1 - (slider12|0); sliderchange(11));
-gx+=tw+8;
-// Oversampling cycler button
-lbl = (slider6==0?"1x":(slider6==1?"2x":"4x"));
-// green state when >1x (OS active), grey when 1x
-button(gx,ty,tw,th,lbl,(slider6|0)>0) ? (
-  slider6 = (slider6+1) % 3; sliderchange(5);
-);
-gx+=tw+8;
-// HQ oversampling toggle
-button(gx,ty,tw,th,"HQ",slider13|0) ? (slider13 = 1 - (slider13|0); sliderchange(12));
-
-r=floor(34*scale + 0.5);
-totalw = 7*(2*r) + 6*gap; kx = floor((gfx_w - totalw)/2 + 0.5); ky=row3y;
-lm = kx; rm = floor(gfx_w - (kx + totalw) + 0.5); adj = floor((rm - lm)/2 + 0.5); kx += adj;
-row_mid = kx + floor(totalw/2 + 0.5);
-knob(101,kx + r + 0*(2*r+gap),ky,r,"Drive",slider2,0,10,"",2,0);
-knob(102,kx + r + 1*(2*r+gap),ky,r,"Tone",slider3,-1,1,"",3,1);
-knob(201,kx + r + 2*(2*r+gap),ky,r,"LowCut",slider7,20,400,"Hz",7,0);
-knob(202,kx + r + 3*(2*r+gap),ky,r,"HighCut",slider8,2000,20000,"Hz",8,0);
-knob(103,kx + r + 4*(2*r+gap),ky,r,"Mix",slider4,0,100,"%",4,0);
-knob(104,kx + r + 5*(2*r+gap),ky,r,"Output",slider11,-24,24,"dB",11,1);
-knob(105,kx + r + 6*(2*r+gap),ky,r,"Smooth",slider14,0,250,"ms",14,0);
 @slider
 mode = slider1|0;
 drive = max(0, slider2);
@@ -715,27 +243,29 @@ drive_s = drive;
 tone_s = tone;
 mix_s = mix;
 out_db_s = out_db;
+out_lin_target = 10^(out_db / 20);
+out_lin_s = out_lin_target;
 pre_gain = punish ? 10^(20/20) : 1;
-tilt_a = exp(-2*$pi*tilt_pivot/srate);
-tilt_alpha = 1 - tilt_a;
-hr_freq = (mode==0)?10000:(mode==1)?12000:(mode==2)?15000:(mode==3)?11000:18000;
-hr_freq = min(hr_freq, srate*0.49);
-hr_a = exp(-2*$pi*hr_freq/srate);
-hr_alpha = 1 - hr_a;
-lc_a = exp(-2*$pi*lc_freq/srate);
-lc_alpha = 1 - lc_a;
-hc_a = exp(-2*$pi*hc_freq/srate);
-hc_alpha = 1 - hc_a;
+
+tiltL.tpt1_set(tilt_pivot * tmt_fc_L); tiltR.tpt1_set(tilt_pivot * tmt_fc_R);
+lc1L.svf_set(lc_freq * tmt_fc_L, 0.7071); lc1R.svf_set(lc_freq * tmt_fc_R, 0.7071);
+lc2L.svf_set(lc_freq * tmt_fc_L, 0.7071); lc2R.svf_set(lc_freq * tmt_fc_R, 0.7071);
+hc1L.svf_set(hc_freq * tmt_fc_L, 0.7071); hc1R.svf_set(hc_freq * tmt_fc_R, 0.7071);
+hc2L.svf_set(hc_freq * tmt_fc_L, 0.7071); hc2R.svf_set(hc_freq * tmt_fc_R, 0.7071);
+th_freq = lc_freq > 20 ? lc_freq : 60;
+thL.svf_set(th_freq * tmt_fc_L, 1.5); thR.svf_set(th_freq * tmt_fc_R, 1.5);
+
 preA_fc = 60; preA_gain = 10^(2/20);
-preA_a = exp(-2*$pi*preA_fc/srate); preA_alpha = 1 - preA_a;
+preAL.tpt1_set(preA_fc); preAR.tpt1_set(preA_fc);
 postE_fc = 10000; postE_gain = 10^(0.5/20);
-postE_a = exp(-2*$pi*postE_fc/srate); postE_alpha = 1 - postE_a;
+postEL.tpt1_set(postE_fc); postER.tpt1_set(postE_fc);
 postN_fc = 3500; postN_gain = 10^(3/20);
-postN_a = exp(-2*$pi*postN_fc/srate); postN_alpha = 1 - postN_a;
+postNL.tpt1_set(postN_fc); postNR.tpt1_set(postN_fc);
+
 ag_tau = 0.15;
 ag_a = exp(-1/(ag_tau * srate));
 ag_alpha = 1 - ag_a;
-ag_min = 0.35; ag_max = 3.0;
+ag_min = 0.05; ag_max = 4.0;
 ag_att_tau = max(0.05, 0.5*sm_ms/1000);
 ag_rel_tau = max(0.25, 1.5*sm_ms/1000);
 ag_a_att = exp(-1/(ag_att_tau*srate)); ag_alpha_att = 1 - ag_a_att;
@@ -743,4 +273,438 @@ ag_a_rel = exp(-1/(ag_rel_tau*srate)); ag_alpha_rel = 1 - ag_a_rel;
 w_hp_a = exp(-2*$pi*w_hp_fc/srate); w_hp_alpha = 1 - w_hp_a;
 w_lp_a = exp(-2*$pi*w_lp_fc/srate); w_lp_alpha = 1 - w_lp_a;
 ag_apply_a = exp(-1/(ag_apply_tau * srate)); ag_apply_alpha = 1 - ag_apply_a;
-odd_hp_a = exp(-2*$pi*odd_hp_fc/srate); odd_hp_alpha = 1 - odd_hp_a;
+
+oddL.tpt1_set_os(odd_hp_fc, srate * os_factor); 
+oddR.tpt1_set_os(odd_hp_fc, srate * os_factor);
+
+@sample
+dry_rawL = spl0; dry_rawR = spl1;
+dryL = spl0; dryR = spl1;
+
+drive_s = drive_s*sm_a + drive*sm_alpha;
+tone_s = tone_s*sm_a + tone*sm_alpha;
+mix_s = mix_s*sm_a + mix*sm_alpha;
+out_lin_target = 10^(out_db / 20);
+out_lin_s = out_lin_s*sm_a + out_lin_target*sm_alpha;
+
+punish = slider5|0;
+pre_gain = punish ? 10^(20/20) : 1;
+thump_on = slider10|0;
+sharp_slope = slider9|0;
+lc_freq = max(20, slider7);
+hc_freq = min(slider8, srate*0.49);
+
+lc_freq != prev_lc_freq ? (
+  lc1L.svf_set(lc_freq * tmt_fc_L, 0.7071); lc1R.svf_set(lc_freq * tmt_fc_R, 0.7071);
+  lc2L.svf_set(lc_freq * tmt_fc_L, 0.7071); lc2R.svf_set(lc_freq * tmt_fc_R, 0.7071);
+  th_freq = lc_freq > 20 ? lc_freq : 60;
+  thL.svf_set(th_freq * tmt_fc_L, 1.5); thR.svf_set(th_freq * tmt_fc_R, 1.5);
+  prev_lc_freq = lc_freq;
+);
+hc_freq != prev_hc_freq ? (
+  hc1L.svf_set(hc_freq * tmt_fc_L, 0.7071); hc1R.svf_set(hc_freq * tmt_fc_R, 0.7071);
+  hc2L.svf_set(hc_freq * tmt_fc_L, 0.7071); hc2R.svf_set(hc_freq * tmt_fc_R, 0.7071);
+  prev_hc_freq = hc_freq;
+);
+mode = slider1|0;
+mode != prev_mode ? ( prev_mode = mode; );
+
+os_sel = slider6|0;
+os_factor = (os_sel==0)?1:(os_sel==1)?2:4;
+hq_os = slider13|0;
+ag_on = slider12|0;
+
+chg = (prev_punish != punish) || (prev_thump_on != thump_on) || (prev_sharp_slope != sharp_slope) || (prev_mode != mode) || (prev_os_sel != os_sel) || (prev_hq_os != hq_os) || (prev_ag_on != ag_on);
+chg ? (
+  out_oldL = out_prevL; out_oldR = out_prevR;
+  xf_pos = 0; xf_len = max(1, floor(xf_ms*srate));
+  prev_punish = punish;
+  prev_thump_on = thump_on;
+  prev_sharp_slope = sharp_slope;
+  prev_mode = mode;
+  prev_os_sel = os_sel;
+  prev_hq_os = hq_os;
+  oddL.tpt1_set_os(odd_hp_fc, srate * os_factor); 
+  oddR.tpt1_set_os(odd_hp_fc, srate * os_factor);
+  (prev_ag_on != ag_on) ? ( 
+     in_msL = in_msR = out_msL = out_msR = 0; 
+     ag_smooth = 1; 
+   );
+  prev_ag_on = ag_on;
+);
+
+hpL = lc1L.svf_hp(dryL);
+hpR = lc1R.svf_hp(dryR);
+sharp_slope ? ( hpL = lc2L.svf_hp(hpL); hpR = lc2R.svf_hp(hpR); );
+
+th_gain = thump_on ? 10^(3/20) : 1;
+bumpL = thump_on ? thL.svf_bp(dryL) * (th_gain - 1) : 0;
+bumpR = thump_on ? thR.svf_bp(dryR) * (th_gain - 1) : 0;
+
+dryL = hpL + bumpL; dryR = hpR + bumpR;
+
+mode == 0 ? (
+  preA_lpL = preAL.tpt1_lp(dryL); preA_lpR = preAR.tpt1_lp(dryR);
+  dryL = preA_lpL*preA_gain + (dryL - preA_lpL);
+  dryR = preA_lpR*preA_gain + (dryR - preA_lpR);
+);
+
+// --- OVERSAMPLING & SATURATION ---
+dr_gain = (1.0 + drive_s * 1.5) * pre_gain;
+dr_gain_L = dr_gain * tmt_gain_L;
+dr_gain_R = dr_gain * tmt_gain_R;
+
+os_sel == 0 ? (
+  // 1x (No Oversampling)
+  xL = dryL * dr_gain_L;
+  xR = dryR * dr_gain_R;
+  
+  mode == 0 ? ( satL = saturate_soft(xL); satR = saturate_soft(xR); );
+  mode == 1 ? ( satL = saturate_even(xL); satR = saturate_even(xR); );
+  mode == 2 ? ( satL = saturate_clip(xL); satR = saturate_clip(xR); );
+  mode == 3 ? ( satL = saturate_warm(xL); satR = saturate_warm(xR); );
+  mode == 4 ? ( 
+    xLh = oddL.tpt1_hp(xL); xRh = oddR.tpt1_hp(xR);
+    satL = saturate_odd(xLh); satR = saturate_odd(xRh);
+  );
+) : os_sel == 1 ? (
+  // 2x Polyphase IIR
+  up2x_L.os_up_2x(dryL); up2x_R.os_up_2x(dryR);
+  
+  xL0 = up2x_L.out0 * dr_gain_L;
+  xR0 = up2x_R.out0 * dr_gain_R;
+  xL1 = up2x_L.out1 * dr_gain_L;
+  xR1 = up2x_R.out1 * dr_gain_R;
+  
+  mode == 0 ? ( yL0=saturate_soft(xL0); yR0=saturate_soft(xR0); yL1=saturate_soft(xL1); yR1=saturate_soft(xR1); );
+  mode == 1 ? ( yL0=saturate_even(xL0); yR0=saturate_even(xR0); yL1=saturate_even(xL1); yR1=saturate_even(xR1); );
+  mode == 2 ? ( yL0=saturate_clip(xL0); yR0=saturate_clip(xR0); yL1=saturate_clip(xL1); yR1=saturate_clip(xR1); );
+  mode == 3 ? ( yL0=saturate_warm(xL0); yR0=saturate_warm(xR0); yL1=saturate_warm(xL1); yR1=saturate_warm(xR1); );
+  mode == 4 ? ( 
+    xLh0=oddL.tpt1_hp(xL0); xRh0=oddR.tpt1_hp(xR0); yL0=saturate_odd(xLh0); yR0=saturate_odd(xRh0);
+    xLh1=oddL.tpt1_hp(xL1); xRh1=oddR.tpt1_hp(xR1); yL1=saturate_odd(xLh1); yR1=saturate_odd(xRh1);
+  );
+  
+  satL = dn2x_L.os_down_2x(yL0, yL1);
+  satR = dn2x_R.os_down_2x(yR0, yR1);
+) : (
+  // 4x Polyphase IIR
+  up4x_L.os_up_4x(dryL); up4x_R.os_up_4x(dryR);
+  
+  xL0 = up4x_L.out0 * dr_gain_L; xR0 = up4x_R.out0 * dr_gain_R;
+  xL1 = up4x_L.out1 * dr_gain_L; xR1 = up4x_R.out1 * dr_gain_R;
+  xL2 = up4x_L.out2 * dr_gain_L; xR2 = up4x_R.out2 * dr_gain_R;
+  xL3 = up4x_L.out3 * dr_gain_L; xR3 = up4x_R.out3 * dr_gain_R;
+
+  mode == 0 ? ( yL0=saturate_soft(xL0); yR0=saturate_soft(xR0); yL1=saturate_soft(xL1); yR1=saturate_soft(xR1); yL2=saturate_soft(xL2); yR2=saturate_soft(xR2); yL3=saturate_soft(xL3); yR3=saturate_soft(xR3); );
+  mode == 1 ? ( yL0=saturate_even(xL0); yR0=saturate_even(xR0); yL1=saturate_even(xL1); yR1=saturate_even(xR1); yL2=saturate_even(xL2); yR2=saturate_even(xR2); yL3=saturate_even(xL3); yR3=saturate_even(xR3); );
+  mode == 2 ? ( yL0=saturate_clip(xL0); yR0=saturate_clip(xR0); yL1=saturate_clip(xL1); yR1=saturate_clip(xR1); yL2=saturate_clip(xL2); yR2=saturate_clip(xR2); yL3=saturate_clip(xL3); yR3=saturate_clip(xR3); );
+  mode == 3 ? ( yL0=saturate_warm(xL0); yR0=saturate_warm(xR0); yL1=saturate_warm(xL1); yR1=saturate_warm(xR1); yL2=saturate_warm(xL2); yR2=saturate_warm(xR2); yL3=saturate_warm(xL3); yR3=saturate_warm(xR3); );
+  mode == 4 ? ( 
+    xLh0=oddL.tpt1_hp(xL0); xRh0=oddR.tpt1_hp(xR0); yL0=saturate_odd(xLh0); yR0=saturate_odd(xRh0);
+    xLh1=oddL.tpt1_hp(xL1); xRh1=oddR.tpt1_hp(xR1); yL1=saturate_odd(xLh1); yR1=saturate_odd(xRh1);
+    xLh2=oddL.tpt1_hp(xL2); xRh2=oddR.tpt1_hp(xR2); yL2=saturate_odd(xLh2); yR2=saturate_odd(xRh2);
+    xLh3=oddL.tpt1_hp(xL3); xRh3=oddR.tpt1_hp(xR3); yL3=saturate_odd(xLh3); yR3=saturate_odd(xRh3);
+  );
+  
+  satL = dn4x_L.os_down_4x(yL0, yL1, yL2, yL3);
+  satR = dn4x_R.os_down_4x(yR0, yR1, yR2, yR3);
+);
+
+ // --- STATIC AUTO-GAIN (Compensazione Volume Wet) ---
+ drive_lin = dr_gain;
+ target_ag = 1.0 / sqrt(max(1.0, drive_lin * 0.4));
+ target_ag = min(ag_max, max(ag_min, target_ag));
+
+ target_ag > ag_smooth ? ( 
+   ag_smooth = ag_smooth * ag_a_att + target_ag * ag_alpha_att; 
+ ) : ( 
+   ag_smooth = ag_smooth * ag_a_rel + target_ag * ag_alpha_rel; 
+ ); 
+ ag = ag_smooth; 
+
+ ag_target_apply = ag_on ? ag : 1; 
+ ag_apply_state = ag_apply_state * ag_apply_a + ag_target_apply * ag_apply_alpha; 
+
+ satL *= ag_apply_state;
+ satR *= ag_apply_state;
+ 
+ // specific post‑emphasis
+ wetL = satL; wetR = satR;
+ mode == 1 ? (
+   postE_lpL = postEL.tpt1_lp(wetL); postE_lpR = postER.tpt1_lp(wetR);
+   wetL = postE_lpL + (wetL - postE_lpL)*postE_gain;
+   wetR = postE_lpR + (wetR - postE_lpR)*postE_gain;
+ );
+ mode == 2 ? (
+   postN_lpL = postNL.tpt1_lp(wetL); postN_lpR = postNR.tpt1_lp(wetR);
+   wetL = postN_lpL + (wetL - postN_lpL)*postN_gain;
+   wetR = postN_lpR + (wetR - postN_lpR)*postN_gain;
+ );
+
+ // --- MIX DRY/WET ---
+ outL = mix_s*wetL + (1 - mix_s)*dry_rawL;
+ outR = mix_s*wetR + (1 - mix_s)*dry_rawR;
+
+ // --- MASTER EQ (Tilt & High Cut) ---
+ tilt_lpL = tiltL.tpt1_lp(outL); tilt_lpR = tiltR.tpt1_lp(outR);
+ tilt_highL = outL - tilt_lpL; tilt_highR = outR - tilt_lpR;
+ low_g = 1 - tone_s; high_g = 1 + tone_s;
+ outL = tilt_lpL*low_g + tilt_highL*high_g;
+ outR = tilt_lpR*low_g + tilt_highR*high_g;
+ 
+ outL = hc1L.svf_lp(outL); outR = hc1R.svf_lp(outR);
+ sharp_slope ? ( outL = hc2L.svf_lp(outL); outR = hc2R.svf_lp(outR); );
+ 
+ xf_len > 0 && xf_pos < xf_len ? (
+   x = xf_pos/xf_len;
+   outL = outL * x; outR = outR * x;
+   xf_pos += 1;
+ );
+
+// Semplice DC Blocker (High Pass) sull'output master per rimuovere offset
+w_out_lpL = w_out_lpL*w_hp_a + outL*w_hp_alpha; w_out_lpL = denorm_protect(w_out_lpL); outL = outL - w_out_lpL;
+w_out_lpR = w_out_lpR*w_hp_a + outR*w_hp_alpha; w_out_lpR = denorm_protect(w_out_lpR); outR = outR - w_out_lpR;
+
+spl0 = min(0.999, max(-0.999, outL * out_lin_s)); 
+spl1 = min(0.999, max(-0.999, outR * out_lin_s));
+
+out_prevL = outL; out_prevR = outR;
+
+@gfx 760 300
+// setup input
+mx = mouse_x; my = mouse_y; mc = mouse_cap;
+clicked = (mc & 1) && !(prev_mc & 1);
+released = !(mc & 1) && (prev_mc & 1);
+rclicked = (mc & 2) && !(prev_mc & 2);
+prev_mc = mc;
+mode = slider1|0;
+drive = max(0, slider2);
+tone = slider3;
+mix = slider4/100;
+out_db = slider11;
+ag_on = slider12|0;
+
+gfx_r = 0.12; gfx_g = 0.12; gfx_b = 0.13; gfx_a = 1; gfx_rect(0,0,gfx_w,gfx_h);
+gfx_r = 1; gfx_g = 1; gfx_b = 1;
+
+function clampv(v,mn,mx) ( v<mn ? mn : v>mx ? mx : v );
+
+function draw_thick_arc(x, y, r, a_start, a_end, thickness) local(a, a_step, px, py, nx, ny, t, r_t) (
+  a_step = $pi / 32; 
+  t = 0;
+  while(t < thickness) (
+    r_t = r - t;
+    a = a_start;
+    px = x + cos(a)*r_t; py = y + sin(a)*r_t;
+    while (a < a_end) (
+      a += a_step;
+      a > a_end ? a = a_end;
+      nx = x + cos(a)*r_t; ny = y + sin(a)*r_t;
+      gfx_line(px, py, nx, ny);
+      px = nx; py = ny;
+    );
+    t += 0.5;
+  );
+);
+
+function draw_ring(x,y,r,ang_norm,center_top,is_drive)
+(
+  gfx_a = 1; 
+  ring_t = 6; 
+  
+  gfx_r=0.08; gfx_g=0.08; gfx_b=0.09; gfx_circle(x,y,r,1);
+  gfx_r=0.12; gfx_g=0.12; gfx_b=0.13; gfx_circle(x,y,r-ring_t,1);
+  
+  start_a = $pi * 0.75;
+  sweep_a = $pi * 1.5;
+  ring_a = center_top ? (-$pi/2 + sweep_a * (ang_norm - 0.5)) : (start_a + sweep_a * ang_norm); 
+  
+  gfx_r=0.18; gfx_g=0.18; gfx_b=0.20; 
+  draw_thick_arc(x, y, r, start_a, start_a + sweep_a, ring_t);
+  
+  is_drive ? (gfx_r=0.90; gfx_g=0.55; gfx_b=0.15;) : (gfx_r=0.14; gfx_g=0.62; gfx_b=0.32;);
+  center_top ? (
+    ang_norm > 0.5 ? draw_thick_arc(x, y, r, -$pi/2, ring_a, ring_t) 
+                   : draw_thick_arc(x, y, r, ring_a, -$pi/2, ring_t);
+  ) : (
+    draw_thick_arc(x, y, r, start_a, ring_a, ring_t);
+  );
+
+  notch_ri = r - ring_t - 3; notch_ro = r - 1; 
+  ring_px = -sin(ring_a); ring_py = cos(ring_a);  
+  gfx_r=1; gfx_g=1; gfx_b=1;
+  notch_i=-1; while(notch_i<=1)( 
+    x1 = floor(x + cos(ring_a)*notch_ri + ring_px*notch_i + 0.5);
+    y1 = floor(y + sin(ring_a)*notch_ri + ring_py*notch_i + 0.5);
+    x2 = floor(x + cos(ring_a)*notch_ro + ring_px*notch_i + 0.5);
+    y2 = floor(y + sin(ring_a)*notch_ro + ring_py*notch_i + 0.5);
+    gfx_line(x1,y1,x2,y2);
+    notch_i += 1;
+  );
+);
+
+function knob(id,x,y,r,label,val,vmin,vmax,unit,slider_idx,center_top,is_drive)
+(
+  norm = (val - vmin)/(vmax - vmin);
+  draw_ring(x,y,r,norm,center_top,is_drive);
+  gfx_a = 1;
+  ring_t2 = 6; gap_g = 5; 
+  center_r = r - (ring_t2 + gap_g); 
+  gfx_r=0.15; gfx_g=0.15; gfx_b=0.16; gfx_circle(x,y,center_r,1);
+  gfx_r=0.20; gfx_g=0.20; gfx_b=0.22; gfx_circle(x,y,center_r,0);
+  
+  gfx_r=0.60; gfx_g=0.60; gfx_b=0.62; 
+  gfx_measurestr(label, lab_w, lab_h); gfx_x = x - lab_w/2; gfx_y = y + r + 8; gfx_printf(label);
+  
+  val_oy = floor(34*(r/34) + 0.5); 
+  (slider_idx==7 || slider_idx==8) ? (
+    sprintf(#val_str, "%d %s", floor(val+0.5), unit);
+  ) : (slider_idx==4) ? (
+    sprintf(#val_str, "%d%%", floor(val+0.5));
+  ) : (slider_idx==11) ? (
+    sprintf(#val_str, "%.1f %s", val, unit);
+  ) : (slider_idx==14) ? (
+    sprintf(#val_str, "%d %s", floor(val+0.5), unit);
+  ) : (
+    sprintf(#val_str, "%.2f %s", val, unit);
+  );
+  gfx_measurestr(#val_str, val_w, val_h);
+  gfx_r=0.9; gfx_g=0.9; gfx_b=0.9;
+  gfx_x = x - val_w/2; gfx_y = y + r + val_oy; gfx_printf("%s", #val_str);
+  
+  dx = mx - x; dy = my - y; dist = sqrt(dx*dx + dy*dy);
+  inside = dist <= (r + 8);
+  hover = inside && !(mc & 1);
+  hover ? ( gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.1; gfx_circle(x,y,r-18,1); gfx_a=1; );
+  ((clicked && inside) || ((mc & 1) && inside && drag_id == -1)) ? (
+    drag_id = id; drag_slider = slider_idx; drag_start_y = my; drag_start_val = val;
+  );
+  rclicked && inside ? (
+    slider_idx==2 ? (slider2=0; sliderchange(1));
+    slider_idx==3 ? (slider3=0; sliderchange(2));
+    slider_idx==4 ? (slider4=100; sliderchange(3)); // Default 100%
+    slider_idx==7 ? (slider7=20; sliderchange(6));
+    slider_idx==8 ? (slider8=20000; sliderchange(7));
+    slider_idx==11 ? (slider11=0; sliderchange(10));
+    slider_idx==14 ? (slider14=10; sliderchange(13));
+  );
+  (mc & 1) && drag_id == id ? (
+    sens = 0.004; 
+    delta = (drag_start_y - my) * (vmax - vmin) * sens;
+    newv = clampv(drag_start_val + delta, vmin, vmax);
+    slider_idx==2 ? (slider2=newv; sliderchange(1));
+    slider_idx==3 ? (slider3=newv; sliderchange(2));
+    slider_idx==4 ? (slider4=newv; sliderchange(3));
+    slider_idx==7 ? (slider7=newv; sliderchange(6));
+    slider_idx==8 ? (slider8=newv; sliderchange(7));
+    slider_idx==11 ? (slider11=newv; sliderchange(10));
+    slider_idx==14 ? (slider14=newv; sliderchange(13));
+  );
+  released && drag_id == id ? (drag_id = -1;);
+);
+
+function button(x,y,w,h,label,state,is_drive)
+(
+  hover = mx>=x && mx<=x+w && my>=y && my<=y+h;
+  state ? (
+    is_drive ? (gfx_r=0.90; gfx_g=0.55; gfx_b=0.15;) : (gfx_r=0.14; gfx_g=0.62; gfx_b=0.32;);
+  ) : (
+    gfx_r=0.18; gfx_g=0.18; gfx_b=0.20; 
+  );
+  hover && !state ? (gfx_r+=0.04; gfx_g+=0.04; gfx_b+=0.04;);
+  hover && state ? (gfx_r+=0.08; gfx_g+=0.08; gfx_b+=0.08;);
+  
+  gfx_rect(x,y,w,h);
+  gfx_r=0.10; gfx_g=0.10; gfx_b=0.11; gfx_rect(x,y,w,1); gfx_rect(x,y+h-1,w,1); gfx_rect(x,y,1,h); gfx_rect(x+w-1,y,1,h);
+  
+  gfx_r = state?0.05:0.85; gfx_g = state?0.05:0.85; gfx_b = state?0.05:0.85;
+  gfx_measurestr(label, lab_w, lab_h);
+  gfx_x = x + (w - lab_w)/2;
+  gfx_y = y + (h - lab_h)/2;
+  gfx_printf(label);
+  (clicked && hover) ? 1 : 0;
+);
+
+gfx_r = 0.18; gfx_g = 0.18; gfx_b = 0.20; gfx_rect(0,0,gfx_w,26); 
+gfx_r = 0.92; gfx_g = 0.92; gfx_b = 0.92; gfx_setfont(1, "Arial", 15);
+gfx_measurestr("Floop Chrominator", tw, th);
+gfx_x = (gfx_w - tw)/2; gfx_y = (26 - th)/2;
+gfx_printf("Floop Chrominator");
+
+btn_ui_w = 20; btn_ui_h = 18;
+btn_ui_x = gfx_w - 8 - btn_ui_w; btn_ui_y = 4;
+hover_c = mx >= btn_ui_x && mx <= btn_ui_x+btn_ui_w && my >= btn_ui_y && my <= btn_ui_y+btn_ui_h;
+clicked_c = hover_c && clicked;
+clicked_c ? ( sliders_showing = slider_show(UI_SLIDER_MASK, -1) > 0; );
+gfx_r=0.06; gfx_g=0.06; gfx_b=0.07; gfx_rect(btn_ui_x, btn_ui_y, btn_ui_w, btn_ui_h);
+gfx_r=0.35; gfx_g=0.35; gfx_b=0.38; gfx_rect(btn_ui_x, btn_ui_y, btn_ui_w, 1); gfx_rect(btn_ui_x, btn_ui_y+btn_ui_h-1, btn_ui_w, 1); gfx_rect(btn_ui_x, btn_ui_y, 1, btn_ui_h); gfx_rect(btn_ui_x+btn_ui_w-1, btn_ui_y, 1, btn_ui_h);
+sliders_showing ? ( gfx_r=0.14; gfx_g=0.62; gfx_b=0.32; ) : ( hover_c ? (gfx_r=0.24; gfx_g=0.24; gfx_b=0.26;) : (gfx_r=0.16; gfx_g=0.16; gfx_b=0.18;) );
+gfx_rect(btn_ui_x+1, btn_ui_y+1, btn_ui_w-2, btn_ui_h-2);
+sliders_showing ? (gfx_r=0.98; gfx_g=0.98; gfx_b=0.98;) : (gfx_r=0.90; gfx_g=0.90; gfx_b=0.90;);
+gfx_measurestr("C", cw, ch);
+gfx_x = btn_ui_x + (btn_ui_w - cw)/2; gfx_y = btn_ui_y + (btn_ui_h - ch)/2;
+gfx_printf("C");
+
+pad=12; scale = (gfx_w/760 < gfx_h/300 ? gfx_w/760 : gfx_h/300); scale = scale<0.8?0.8:scale>3.0?3.0:scale;
+sp = floor(8*scale + 0.5);
+gap = floor(18*scale + 0.5);
+row1y=floor(44*scale + 0.5); row2y=floor(100*scale + 0.5); row3y=floor(188*scale + 0.5);
+gfx_setfont(1, "Segoe UI", floor(14*scale + 0.5));
+row1y += floor(10*scale + 0.5);
+row3y += floor(12*scale + 0.5);
+row2y += floor(12*scale + 0.5);
+
+bw=floor(72*scale + 0.5); bh=floor(22*scale + 0.5); totalw = 5*bw + 4*sp; bx = floor((gfx_w - totalw)/2 + 0.5); by=row1y - bh/2;
+function mode_btn(ix,label,selected)
+(
+  xx = bx + ix*(bw+6);
+  hover = mx>=xx && mx<=xx+bw && my>=by && my<=by+bh;
+  state = selected;
+  
+  state ? (gfx_r=0.90; gfx_g=0.55; gfx_b=0.15;) : (gfx_r=0.18; gfx_g=0.18; gfx_b=0.20;);
+  hover && !state ? (gfx_r+=0.04; gfx_g+=0.04; gfx_b+=0.04;);
+  hover && state ? (gfx_r+=0.08; gfx_g+=0.08; gfx_b+=0.08;);
+  
+  gfx_rect(xx,by,bw,bh);
+  gfx_r=0.10; gfx_g=0.10; gfx_b=0.11; gfx_rect(xx,by,bw,1); gfx_rect(xx,by+bh-1,bw,1); gfx_rect(xx,by,1,bh); gfx_rect(xx+bw-1,by,1,bh);
+  
+  gfx_r = state?0.05:0.85; gfx_g = state?0.05:0.85; gfx_b = state?0.05:0.85;
+  gfx_measurestr(label, lab_w, lab_h);
+  gfx_x = xx + (bw - lab_w)/2;
+  gfx_y = by + (bh - lab_h)/2;
+  gfx_printf(label);
+  clicked && hover ? (
+    slider1=ix; sliderchange(0 + ix);
+  mode = slider1|0;
+  );
+);
+mode_btn(0,"Soft",mode==0); mode_btn(1,"Even",mode==1); mode_btn(2,"Clip",mode==2); mode_btn(3,"Warm",mode==3); mode_btn(4,"Odd",mode==4);
+
+tw=floor(90*scale + 0.5); th=floor(26*scale + 0.5); totalw = 6*tw + 5*sp; gx = floor((gfx_w - totalw)/2 + 0.5); ty=row2y - th/2;
+button(gx,ty,tw,th,"Punish",slider5|0, 1) ? (slider5 = 1 - (slider5|0); sliderchange(4));
+gx+=tw+8;
+  button(gx,ty,tw,th,"Bump",slider10|0, 0) ? (slider10 = 1 - (slider10|0); sliderchange(9));
+gx+=tw+8;
+  button(gx,ty,tw,th,"Sharp",slider9|0, 0) ? (slider9 = 1 - (slider9|0); sliderchange(8));
+gx+=tw+8;
+button(gx,ty,tw,th,"AutoGain",slider12|0, 0) ? (slider12 = 1 - (slider12|0); sliderchange(11));
+gx+=tw+8;
+lbl = (slider6==0?"1x":(slider6==1?"2x":"4x"));
+button(gx,ty,tw,th,lbl,(slider6|0)>0, 0) ? (
+  slider6 = (slider6+1) % 3; sliderchange(5);
+);
+gx+=tw+8;
+button(gx,ty,tw,th,"HQ",slider13|0, 0) ? (slider13 = 1 - (slider13|0); sliderchange(12));
+
+r=floor(34*scale + 0.5);
+totalw = 7*(2*r) + 6*gap; kx = floor((gfx_w - totalw)/2 + 0.5); ky=row3y;
+lm = kx; rm = floor(gfx_w - (kx + totalw) + 0.5); adj = floor((rm - lm)/2 + 0.5); kx += adj;
+row_mid = kx + floor(totalw/2 + 0.5);
+knob(101,kx + r + 0*(2*r+gap),ky,r,"Drive",slider2,0,10,"",2,0, 1);
+knob(102,kx + r + 1*(2*r+gap),ky,r,"Tone",slider3,-1,1,"",3,1, 0);
+knob(201,kx + r + 2*(2*r+gap),ky,r,"LowCut",slider7,20,400,"Hz",7,0, 0);
+knob(202,kx + r + 3*(2*r+gap),ky,r,"HighCut",slider8,2000,20000,"Hz",8,0, 0);
+knob(103,kx + r + 4*(2*r+gap),ky,r,"Mix",slider4,0,100,"%",4,0, 0);
+knob(104,kx + r + 5*(2*r+gap),ky,r,"Output",slider11,-24,24,"dB",11,1, 0);
+knob(105,kx + r + 6*(2*r+gap),ky,r,"Smooth",slider14,0,250,"ms",14,0, 0);

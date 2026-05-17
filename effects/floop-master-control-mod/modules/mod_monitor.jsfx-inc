@@ -1,0 +1,214 @@
+@init
+
+// Floop Master Control - Monitor Control Module
+// @author Floop-s
+
+function mod_monitor_init(slot_id, mem_start, mem_size) (
+  this.slot_id = slot_id;
+  this.mem = mem_start;
+);
+
+function mod_monitor_sample(l, r) (
+  // Monitor module doesn't do its own DSP.
+  // The host processes monitor routing for all slots after this.
+  0;
+);
+
+function mod_monitor_gfx(x, y, w, h, scale) local(title_h, top_pad, bottom_pad, btn_area_y, btn_w2, btn_h, bx, gap, lbl_norm, lbl_mono, lbl_side, row_w, btn_w3, dim_x, dim_y, dim_w, dim_h, dim_hover, dy, dim_new, band_x, band_y, band_h, band_gap, show_xover_ui, xover_h, avail_h, cap_h, s_x, s_y, s_w, s_h, s_w2, x1_x, x2_x, x1_hov, x2_hov, norm, f, ln_den, tw, th) (
+  this.mouse_click = ui_click_l;
+  this.mouse_click_r = ui_click_r;
+
+  // Background
+  gfx_r=c_panel_r; gfx_g=c_panel_g; gfx_b=c_panel_b; gfx_a=1;
+  gfx_rect(x, y, w, h);
+  gfx_r=c_panel_edge_r; gfx_g=c_panel_edge_g; gfx_b=c_panel_edge_b; gfx_a=1;
+  gfx_line(x, y, x+w, y);
+  gfx_line(x, y+h, x+w, y+h);
+  gfx_line(x, y, x, y+h);
+  gfx_line(x+w, y, x+w, y+h);
+  
+  title_h = 0;
+  top_pad = max(4, floor(6 * scale));
+  bottom_pad = max(4, floor(6 * scale));
+
+  gap = floor(4 * scale);
+  row_w = w - floor(20 * scale);
+  btn_w2 = (row_w - gap) / 2;
+  
+  show_xover_ui = (w >= floor(360*scale) && h >= floor(110*scale));
+  xover_h = max(14, floor(16 * scale));
+  avail_h = h - top_pad - bottom_pad - floor(16 * scale) - gap * 2 - (show_xover_ui ? (xover_h + gap) : 0);
+
+  // Fit 3 rows of buttons (+ optional crossover slider row)
+  btn_h = floor(avail_h / 3);
+  cap_h = show_xover_ui ? floor(24 * scale) : floor(28 * scale);
+  btn_h > cap_h ? btn_h = cap_h;
+  btn_h < floor(18 * scale) ? btn_h = floor(18 * scale);
+  
+  btn_area_y = y + top_pad + floor(8 * scale);
+  bx = x + floor(10 * scale);
+  
+  lbl_norm = "NORMAL";
+  lbl_mono = "SOLO MID";
+  lbl_side = "SOLO SIDE";
+  
+  sprintf(#dim_lbl, "DIM %.1f", dim_db);
+  
+  // Row 1: Normal / Dim
+  mod_spectrum_draw_btn(bx, btn_area_y, btn_w2, btn_h, lbl_norm, monitor_mode == 0, scale, this.mouse_click) ? (
+    monitor_mode = 0; slider8 = 0; sliderchange(slider8); slider_automate(1<<7);
+    band_focus_low = 0; slider11 = 0; sliderchange(slider11); slider_automate(1<<10);
+    band_focus_mid = 0; slider28 = 0; sliderchange(slider28); slider_automate(1<<27);
+    band_focus_high = 0; slider19 = 0; sliderchange(slider19); slider_automate(1<<18);
+  );
+  
+  dim_x = bx + btn_w2 + gap;
+  dim_y = btn_area_y;
+  dim_w = btn_w2;
+  dim_h = btn_h;
+  
+  mod_spectrum_draw_btn(dim_x, dim_y, dim_w, dim_h, #dim_lbl, dim_active, scale, this.mouse_click) ? (
+    dim_active = 1 - dim_active; slider10 = dim_active; sliderchange(slider10); slider_automate(1<<9);
+  );
+
+  dim_hover = mouse_x >= dim_x && mouse_x < dim_x+dim_w && mouse_y >= dim_y && mouse_y < dim_y+dim_h;
+  this.dim_drag && !(mouse_cap&2) ? this.dim_drag = 0;
+  dim_hover && ui_click_r ? (
+    this.dim_drag = 1;
+    this.dim_drag_y = mouse_y;
+    this.dim_drag_start = dim_db;
+  );
+  this.dim_drag ? (
+    dy = (this.dim_drag_y - mouse_y) / max(1, (16 * scale));
+    dim_new = this.dim_drag_start + dy;
+    dim_new < -36 ? dim_new = -36;
+    dim_new > 0 ? dim_new = 0;
+    abs(dim_new - dim_db) > 0.00001 ? (
+      dim_db = dim_new;
+      slider23 = dim_db;
+      sliderchange(slider23); slider_automate(1<<22);
+      sprintf(#dim_lbl, "DIM %.1f", dim_db);
+    );
+  );
+  
+  // Row 2: Mid / Side
+  btn_area_y += btn_h + gap;
+  mod_spectrum_draw_btn(bx, btn_area_y, btn_w2, btn_h, lbl_mono, monitor_mode == 1, scale, this.mouse_click) ? (
+    monitor_mode == 1 ? (monitor_mode = 0; slider8 = 0;) : (monitor_mode = 1; slider8 = 1;);
+    sliderchange(slider8); slider_automate(1<<7);
+  );
+  mod_spectrum_draw_btn(bx + btn_w2 + gap, btn_area_y, btn_w2, btn_h, lbl_side, monitor_mode == 2, scale, this.mouse_click) ? (
+    monitor_mode == 2 ? (monitor_mode = 0; slider8 = 0;) : (monitor_mode = 2; slider8 = 2;);
+    sliderchange(slider8); slider_automate(1<<7);
+  );
+  
+  // Row 3: Band Focus
+  band_y = btn_area_y + btn_h + gap;
+  band_h = btn_h;
+  band_gap = gap;
+  btn_w3 = (row_w - band_gap * 2) / 3;
+  band_x = bx;
+  
+  mod_spectrum_draw_btn(band_x, band_y, btn_w3, band_h, "LOW", band_focus_low, scale, this.mouse_click) ? (
+    band_focus_low ? (band_focus_low = 0;) : (band_focus_low = 1;);
+    slider11 = band_focus_low; sliderchange(slider11); slider_automate(1<<10);
+  );
+  band_x += btn_w3 + band_gap;
+  mod_spectrum_draw_btn(band_x, band_y, btn_w3, band_h, "MID", band_focus_mid, scale, this.mouse_click) ? (
+    band_focus_mid ? (band_focus_mid = 0;) : (band_focus_mid = 1;);
+    slider28 = band_focus_mid; sliderchange(slider28); slider_automate(1<<27);
+  );
+  band_x += btn_w3 + band_gap;
+  mod_spectrum_draw_btn(band_x, band_y, btn_w3, band_h, "HIGH", band_focus_high, scale, this.mouse_click) ? (
+    band_focus_high ? (band_focus_high = 0;) : (band_focus_high = 1;);
+    slider19 = band_focus_high; sliderchange(slider19); slider_automate(1<<18);
+  );
+
+  show_xover_ui ? (
+    s_x = bx;
+    s_y = band_y + band_h + gap;
+    s_w = row_w;
+    s_h = xover_h;
+    s_w2 = (s_w - gap) / 2;
+    x1_x = s_x;
+    x2_x = s_x + s_w2 + gap;
+
+    ln_den = log(1000/40);
+    norm = log(max(40, min(1000, xover1_hz)) / 40) / ln_den;
+    norm < 0 ? norm = 0;
+    norm > 1 ? norm = 1;
+
+    x1_hov = mouse_x >= x1_x && mouse_x < x1_x+s_w2 && mouse_y >= s_y && mouse_y < s_y+s_h;
+    this.x1_drag && !(mouse_cap&1) ? this.x1_drag = 0;
+    x1_hov && this.mouse_click ? (this.x1_drag = 1;);
+    this.x1_drag ? (
+      norm = (mouse_x - x1_x) / max(1, (s_w2 - 1));
+      norm < 0 ? norm = 0;
+      norm > 1 ? norm = 1;
+      f = 40 * exp(norm * ln_den);
+      f = floor(f + 0.5);
+      f < 40 ? f = 40;
+      f > 1000 ? f = 1000;
+      abs(f - xover1_hz) > 0.00001 ? (
+        xover1_hz = f; slider24 = f; sliderchange(slider24); slider_automate(1<<23);
+        (xover2_hz < xover1_hz * 1.25) ? (
+          xover2_hz = floor(xover1_hz * 1.25 + 0.5);
+          xover2_hz > 12000 ? xover2_hz = 12000;
+          slider25 = xover2_hz; sliderchange(slider25); slider_automate(1<<24);
+        );
+      );
+    );
+
+    gfx_r=0.10; gfx_g=0.10; gfx_b=0.12; gfx_a=1;
+    gfx_rect(x1_x, s_y, s_w2, s_h);
+    gfx_r=0.20; gfx_g=0.60; gfx_b=0.30; gfx_a=0.9;
+    gfx_rect(x1_x, s_y, s_w2 * norm, s_h);
+    gfx_r=0.15; gfx_g=0.15; gfx_b=0.17; gfx_a=1;
+    gfx_rect(x1_x, s_y, s_w2, s_h, 0);
+    gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.75;
+    gfx_setfont(1, #font_ui, min(f_sz_small, max(9, floor(10 * scale))));
+    sprintf(#xo_lbl, "LOW %d Hz", floor(xover1_hz+0.5));
+    gfx_measurestr(#xo_lbl, tw, th);
+    gfx_x = x1_x + (s_w2 - tw)/2;
+    gfx_y = s_y + (s_h - th)/2;
+    gfx_drawstr(#xo_lbl);
+
+    ln_den = log(12000/200);
+    norm = log(max(200, min(12000, xover2_hz)) / 200) / ln_den;
+    norm < 0 ? norm = 0;
+    norm > 1 ? norm = 1;
+
+    x2_hov = mouse_x >= x2_x && mouse_x < x2_x+s_w2 && mouse_y >= s_y && mouse_y < s_y+s_h;
+    this.x2_drag && !(mouse_cap&1) ? this.x2_drag = 0;
+    x2_hov && this.mouse_click ? (this.x2_drag = 1;);
+    this.x2_drag ? (
+      norm = (mouse_x - x2_x) / max(1, (s_w2 - 1));
+      norm < 0 ? norm = 0;
+      norm > 1 ? norm = 1;
+      f = 200 * exp(norm * ln_den);
+      f = floor(f + 0.5);
+      f < 200 ? f = 200;
+      f > 12000 ? f = 12000;
+      (f < xover1_hz * 1.25) ? f = floor(xover1_hz * 1.25 + 0.5);
+      f > 12000 ? f = 12000;
+      abs(f - xover2_hz) > 0.00001 ? (
+        xover2_hz = f; slider25 = f; sliderchange(slider25); slider_automate(1<<24);
+      );
+    );
+
+    gfx_r=0.10; gfx_g=0.10; gfx_b=0.12; gfx_a=1;
+    gfx_rect(x2_x, s_y, s_w2, s_h);
+    gfx_r=0.20; gfx_g=0.60; gfx_b=0.30; gfx_a=0.9;
+    gfx_rect(x2_x, s_y, s_w2 * norm, s_h);
+    gfx_r=0.15; gfx_g=0.15; gfx_b=0.17; gfx_a=1;
+    gfx_rect(x2_x, s_y, s_w2, s_h, 0);
+    gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.75;
+    gfx_setfont(1, #font_ui, min(f_sz_small, max(9, floor(10 * scale))));
+    sprintf(#xo_lbl, "HIGH %d Hz", floor(xover2_hz+0.5));
+    gfx_measurestr(#xo_lbl, tw, th);
+    gfx_x = x2_x + (s_w2 - tw)/2;
+    gfx_y = s_y + (s_h - th)/2;
+    gfx_drawstr(#xo_lbl);
+  );
+
+);

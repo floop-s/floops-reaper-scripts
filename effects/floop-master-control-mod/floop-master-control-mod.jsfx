@@ -1,0 +1,960 @@
+desc:Floop Master Control (Modular)
+// @version 1.0.0
+// @author Floop-s
+// @license GPL-3.0
+// @about
+//   Modular master monitoring and analysis tool for REAPER.
+//
+//   Slot-based workflow (up to 9 slots per instance).
+//
+//   Includes:
+//   - True Peak and LUFS metering (Short-Term and Integrated)
+//   - Spectrum analyzer (Mid/Side, temporal averaging, smoothing, hold/freeze)
+//   - Phase correlation (bar) and multi-band phase
+//   - Stereo goniometer
+//   - Oscilloscope
+//   - Spectrogram
+//   - Monitor control (Dim, Solo Mid/Side, Low/Mid/High focus)
+//   - VU meter
+//
+//   Keywords: LUFS, true peak, spectrum, spectrogram, phase, stereo, monitor, mastering.
+// @provides
+//   [effect] floop-master-control-mod.jsfx
+//   [data] modules/mod_meter.jsfx-inc
+//   [data] modules/mod_spectrum.jsfx-inc
+//   [data] modules/mod_stereo.jsfx-inc
+//   [data] modules/mod_phase.jsfx-inc
+//   [data] modules/mod_correlometer.jsfx-inc
+//   [data] modules/mod_oscilloscope.jsfx-inc
+//   [data] modules/mod_monitor.jsfx-inc
+//   [data] modules/mod_vumeter.jsfx-inc
+//   [data] modules/mod_spectrogram.jsfx-inc
+
+import modules/mod_meter.jsfx-inc
+import modules/mod_spectrum.jsfx-inc
+import modules/mod_stereo.jsfx-inc
+import modules/mod_phase.jsfx-inc
+import modules/mod_correlometer.jsfx-inc
+import modules/mod_oscilloscope.jsfx-inc
+import modules/mod_monitor.jsfx-inc
+import modules/mod_vumeter.jsfx-inc
+import modules/mod_spectrogram.jsfx-inc
+
+slider1:slot1_type=1<0,9,1{Empty,True Peak / LUFS,Spectrum,Phase Correlation,Multi-band Phase,Stereo Analyzer,Oscilloscope,Monitor Control,VU Meter,Spectrogram}>Slot 1
+slider2:slot2_type=2<0,9,1{Empty,True Peak / LUFS,Spectrum,Phase Correlation,Multi-band Phase,Stereo Analyzer,Oscilloscope,Monitor Control,VU Meter,Spectrogram}>Slot 2
+slider3:slot3_type=5<0,9,1{Empty,True Peak / LUFS,Spectrum,Phase Correlation,Multi-band Phase,Stereo Analyzer,Oscilloscope,Monitor Control,VU Meter,Spectrogram}>Slot 3
+slider4:slot4_type=3<0,9,1{Empty,True Peak / LUFS,Spectrum,Phase Correlation,Multi-band Phase,Stereo Analyzer,Oscilloscope,Monitor Control,VU Meter,Spectrogram}>Slot 4
+slider5:slot5_type=6<0,9,1{Empty,True Peak / LUFS,Spectrum,Phase Correlation,Multi-band Phase,Stereo Analyzer,Oscilloscope,Monitor Control,VU Meter,Spectrogram}>Slot 5
+slider6:slot6_type=7<0,9,1{Empty,True Peak / LUFS,Spectrum,Phase Correlation,Multi-band Phase,Stereo Analyzer,Oscilloscope,Monitor Control,VU Meter,Spectrogram}>Slot 6
+slider7:slot7_type=0<0,9,1{Empty,True Peak / LUFS,Spectrum,Phase Correlation,Multi-band Phase,Stereo Analyzer,Oscilloscope,Monitor Control,VU Meter,Spectrogram}>Slot 7
+slider26:slot8_type=0<0,9,1{Empty,True Peak / LUFS,Spectrum,Phase Correlation,Multi-band Phase,Stereo Analyzer,Oscilloscope,Monitor Control,VU Meter,Spectrogram}>Slot 8
+slider27:slot9_type=0<0,9,1{Empty,True Peak / LUFS,Spectrum,Phase Correlation,Multi-band Phase,Stereo Analyzer,Oscilloscope,Monitor Control,VU Meter,Spectrogram}>Slot 9
+
+slider8:monitor_mode=0<0,2,1{Normal,Mono,Side}>-Monitor Mode
+slider9:out_gain_db=0<-60,12,0.1>Monitor Gain (dB)
+slider10:dim_active=0<0,1,1>Dim
+slider11:band_focus_low=0<0,1,1>Band Focus Low
+slider28:band_focus_mid=0<0,1,1>Band Focus Mid
+slider23:dim_db=-18<-36,0,0.1>Dim Attenuation (dB)
+slider24:xover1_hz=200<40,1000,1>Band Xover 1 (Hz)
+slider25:xover2_hz=2000<200,12000,1>Band Xover 2 (Hz)
+
+slider12:tp_limit_mode=0<0,2,1{-1.0 dBTP,-0.3 dBTP,0.0 dBTP}>True Peak Threshold
+slider13:lufs_s_limit_db=-14<-36,0,0.1>LUFS-S Target
+
+slider14:spec_avg_mode=300<50,5000,1>Spectrum Temporal (ms)
+slider15:spec_slope_db=4.5<0,6,0.1>Spectrum Slope (dB/oct)
+slider16:spec_freeze=0<0,1,1>Spectrum Freeze
+slider17:spec_smoothing_oct=1<0,2,0.01>Smoothing (Octave)
+slider18:spec_mode_ms=0<0,1,1{Stereo,Mid/Side}>Spectrum Mode
+slider19:band_focus_high=0<0,1,1>Band Focus High
+
+slider22:spec_hold=0<0,1,1>Spectrum Hold
+slider29:spec_show_peak=0<0,1,1>Spectrum Show Peak
+
+slider20:vu_calib=18<10,24,1>VU Calibration (-dBFS)
+slider21:spectrogram_speed=1<1,10,1>Spectrogram Speed
+
+options:no_meter
+
+@init
+ext_noinit = 1.0;
+
+active_slot1_type = active_slot2_type = active_slot3_type = active_slot4_type = active_slot5_type = active_slot6_type = active_slot7_type = active_slot8_type = active_slot9_type = -1;
+
+
+strcpy(#font_ui, "Arial, Helvetica, sans-serif");
+
+c_bg_r = 0.10; c_bg_g = 0.10; c_bg_b = 0.12;
+c_header_r = 0.18; c_header_g = 0.18; c_header_b = 0.20;
+c_slot_r = 0.14; c_slot_g = 0.14; c_slot_b = 0.16;
+c_slot_edge_r = 0.22; c_slot_edge_g = 0.22; c_slot_edge_b = 0.25;
+c_panel_r = 0.12; c_panel_g = 0.12; c_panel_b = 0.14;
+c_panel_edge_r = 0.20; c_panel_edge_g = 0.20; c_panel_edge_b = 0.23;
+
+UI_SLIDER_MASK = (1<<29)-1;
+sliders_showing = slider_show(UI_SLIDER_MASK, 0) > 0;
+ui_block_clicks = 0;
+
+// Memory Management
+mem_ptr = 10000; 
+
+slot_mem_meter = 5000;
+slot_mem_spectrum = 60000;
+slot_mem_stereo = 3000;
+slot_mem_phase = 2000;
+slot_mem_correlometer = 60000;
+slot_mem_oscilloscope = 500000;
+slot_mem_monitor = 2000;
+slot_mem_vumeter = 2000;
+slot_mem_spectrogram = 60000;
+
+slot_mem_size =
+  slot_mem_meter +
+  slot_mem_spectrum +
+  slot_mem_stereo +
+  slot_mem_phase +
+  slot_mem_correlometer +
+  slot_mem_oscilloscope +
+  slot_mem_monitor +
+  slot_mem_vumeter +
+  slot_mem_spectrogram;
+
+slot1_mem = mem_ptr; mem_ptr += slot_mem_size;
+slot2_mem = mem_ptr; mem_ptr += slot_mem_size;
+slot3_mem = mem_ptr; mem_ptr += slot_mem_size;
+slot4_mem = mem_ptr; mem_ptr += slot_mem_size;
+slot5_mem = mem_ptr; mem_ptr += slot_mem_size;
+slot6_mem = mem_ptr; mem_ptr += slot_mem_size;
+slot7_mem = mem_ptr; mem_ptr += slot_mem_size;
+slot8_mem = mem_ptr; mem_ptr += slot_mem_size;
+slot9_mem = mem_ptr; mem_ptr += slot_mem_size;
+
+// Initialize Slots
+p1 = slot1_mem;
+slot1_m1.mod_meter_init(1, p1, slot_mem_meter); p1 += slot_mem_meter;
+slot1_m2.mod_spectrum_init(1, p1, slot_mem_spectrum); p1 += slot_mem_spectrum;
+slot1_m5.mod_stereo_init(1, p1, slot_mem_stereo); p1 += slot_mem_stereo;
+slot1_m3.mod_phase_init(1, p1, slot_mem_phase); p1 += slot_mem_phase;
+slot1_m4.mod_correlometer_init(1, p1, slot_mem_correlometer); p1 += slot_mem_correlometer;
+slot1_m6.mod_oscilloscope_init(1, p1, slot_mem_oscilloscope); p1 += slot_mem_oscilloscope;
+slot1_m7.mod_monitor_init(1, p1, slot_mem_monitor); p1 += slot_mem_monitor;
+slot1_m8.mod_vumeter_init(1, p1, slot_mem_vumeter); p1 += slot_mem_vumeter;
+slot1_m9.mod_spectrogram_init(1, p1, slot_mem_spectrogram); p1 += slot_mem_spectrogram;
+
+p2 = slot2_mem;
+slot2_m1.mod_meter_init(2, p2, slot_mem_meter); p2 += slot_mem_meter;
+slot2_m2.mod_spectrum_init(2, p2, slot_mem_spectrum); p2 += slot_mem_spectrum;
+slot2_m5.mod_stereo_init(2, p2, slot_mem_stereo); p2 += slot_mem_stereo;
+slot2_m3.mod_phase_init(2, p2, slot_mem_phase); p2 += slot_mem_phase;
+slot2_m4.mod_correlometer_init(2, p2, slot_mem_correlometer); p2 += slot_mem_correlometer;
+slot2_m6.mod_oscilloscope_init(2, p2, slot_mem_oscilloscope); p2 += slot_mem_oscilloscope;
+slot2_m7.mod_monitor_init(2, p2, slot_mem_monitor); p2 += slot_mem_monitor;
+slot2_m8.mod_vumeter_init(2, p2, slot_mem_vumeter); p2 += slot_mem_vumeter;
+slot2_m9.mod_spectrogram_init(2, p2, slot_mem_spectrogram); p2 += slot_mem_spectrogram;
+
+p3 = slot3_mem;
+slot3_m1.mod_meter_init(3, p3, slot_mem_meter); p3 += slot_mem_meter;
+slot3_m2.mod_spectrum_init(3, p3, slot_mem_spectrum); p3 += slot_mem_spectrum;
+slot3_m5.mod_stereo_init(3, p3, slot_mem_stereo); p3 += slot_mem_stereo;
+slot3_m3.mod_phase_init(3, p3, slot_mem_phase); p3 += slot_mem_phase;
+slot3_m4.mod_correlometer_init(3, p3, slot_mem_correlometer); p3 += slot_mem_correlometer;
+slot3_m6.mod_oscilloscope_init(3, p3, slot_mem_oscilloscope); p3 += slot_mem_oscilloscope;
+slot3_m7.mod_monitor_init(3, p3, slot_mem_monitor); p3 += slot_mem_monitor;
+slot3_m8.mod_vumeter_init(3, p3, slot_mem_vumeter); p3 += slot_mem_vumeter;
+slot3_m9.mod_spectrogram_init(3, p3, slot_mem_spectrogram); p3 += slot_mem_spectrogram;
+
+p4 = slot4_mem;
+slot4_m1.mod_meter_init(4, p4, slot_mem_meter); p4 += slot_mem_meter;
+slot4_m2.mod_spectrum_init(4, p4, slot_mem_spectrum); p4 += slot_mem_spectrum;
+slot4_m5.mod_stereo_init(4, p4, slot_mem_stereo); p4 += slot_mem_stereo;
+slot4_m3.mod_phase_init(4, p4, slot_mem_phase); p4 += slot_mem_phase;
+slot4_m4.mod_correlometer_init(4, p4, slot_mem_correlometer); p4 += slot_mem_correlometer;
+slot4_m6.mod_oscilloscope_init(4, p4, slot_mem_oscilloscope); p4 += slot_mem_oscilloscope;
+slot4_m7.mod_monitor_init(4, p4, slot_mem_monitor); p4 += slot_mem_monitor;
+slot4_m8.mod_vumeter_init(4, p4, slot_mem_vumeter); p4 += slot_mem_vumeter;
+slot4_m9.mod_spectrogram_init(4, p4, slot_mem_spectrogram); p4 += slot_mem_spectrogram;
+
+p5 = slot5_mem;
+slot5_m1.mod_meter_init(5, p5, slot_mem_meter); p5 += slot_mem_meter;
+slot5_m2.mod_spectrum_init(5, p5, slot_mem_spectrum); p5 += slot_mem_spectrum;
+slot5_m5.mod_stereo_init(5, p5, slot_mem_stereo); p5 += slot_mem_stereo;
+slot5_m3.mod_phase_init(5, p5, slot_mem_phase); p5 += slot_mem_phase;
+slot5_m4.mod_correlometer_init(5, p5, slot_mem_correlometer); p5 += slot_mem_correlometer;
+slot5_m6.mod_oscilloscope_init(5, p5, slot_mem_oscilloscope); p5 += slot_mem_oscilloscope;
+slot5_m7.mod_monitor_init(5, p5, slot_mem_monitor); p5 += slot_mem_monitor;
+slot5_m8.mod_vumeter_init(5, p5, slot_mem_vumeter); p5 += slot_mem_vumeter;
+slot5_m9.mod_spectrogram_init(5, p5, slot_mem_spectrogram); p5 += slot_mem_spectrogram;
+
+p6 = slot6_mem;
+slot6_m1.mod_meter_init(6, p6, slot_mem_meter); p6 += slot_mem_meter;
+slot6_m2.mod_spectrum_init(6, p6, slot_mem_spectrum); p6 += slot_mem_spectrum;
+slot6_m5.mod_stereo_init(6, p6, slot_mem_stereo); p6 += slot_mem_stereo;
+slot6_m3.mod_phase_init(6, p6, slot_mem_phase); p6 += slot_mem_phase;
+slot6_m4.mod_correlometer_init(6, p6, slot_mem_correlometer); p6 += slot_mem_correlometer;
+slot6_m6.mod_oscilloscope_init(6, p6, slot_mem_oscilloscope); p6 += slot_mem_oscilloscope;
+slot6_m7.mod_monitor_init(6, p6, slot_mem_monitor); p6 += slot_mem_monitor;
+slot6_m8.mod_vumeter_init(6, p6, slot_mem_vumeter); p6 += slot_mem_vumeter;
+slot6_m9.mod_spectrogram_init(6, p6, slot_mem_spectrogram); p6 += slot_mem_spectrogram;
+
+p7 = slot7_mem;
+slot7_m1.mod_meter_init(7, p7, slot_mem_meter); p7 += slot_mem_meter;
+slot7_m2.mod_spectrum_init(7, p7, slot_mem_spectrum); p7 += slot_mem_spectrum;
+slot7_m5.mod_stereo_init(7, p7, slot_mem_stereo); p7 += slot_mem_stereo;
+slot7_m3.mod_phase_init(7, p7, slot_mem_phase); p7 += slot_mem_phase;
+slot7_m4.mod_correlometer_init(7, p7, slot_mem_correlometer); p7 += slot_mem_correlometer;
+slot7_m6.mod_oscilloscope_init(7, p7, slot_mem_oscilloscope); p7 += slot_mem_oscilloscope;
+slot7_m7.mod_monitor_init(7, p7, slot_mem_monitor); p7 += slot_mem_monitor;
+slot7_m8.mod_vumeter_init(7, p7, slot_mem_vumeter); p7 += slot_mem_vumeter;
+slot7_m9.mod_spectrogram_init(7, p7, slot_mem_spectrogram); p7 += slot_mem_spectrogram;
+
+p8 = slot8_mem;
+slot8_m1.mod_meter_init(8, p8, slot_mem_meter); p8 += slot_mem_meter;
+slot8_m2.mod_spectrum_init(8, p8, slot_mem_spectrum); p8 += slot_mem_spectrum;
+slot8_m5.mod_stereo_init(8, p8, slot_mem_stereo); p8 += slot_mem_stereo;
+slot8_m3.mod_phase_init(8, p8, slot_mem_phase); p8 += slot_mem_phase;
+slot8_m4.mod_correlometer_init(8, p8, slot_mem_correlometer); p8 += slot_mem_correlometer;
+slot8_m6.mod_oscilloscope_init(8, p8, slot_mem_oscilloscope); p8 += slot_mem_oscilloscope;
+slot8_m7.mod_monitor_init(8, p8, slot_mem_monitor); p8 += slot_mem_monitor;
+slot8_m8.mod_vumeter_init(8, p8, slot_mem_vumeter); p8 += slot_mem_vumeter;
+slot8_m9.mod_spectrogram_init(8, p8, slot_mem_spectrogram); p8 += slot_mem_spectrogram;
+
+p9 = slot9_mem;
+slot9_m1.mod_meter_init(9, p9, slot_mem_meter); p9 += slot_mem_meter;
+slot9_m2.mod_spectrum_init(9, p9, slot_mem_spectrum); p9 += slot_mem_spectrum;
+slot9_m5.mod_stereo_init(9, p9, slot_mem_stereo); p9 += slot_mem_stereo;
+slot9_m3.mod_phase_init(9, p9, slot_mem_phase); p9 += slot_mem_phase;
+slot9_m4.mod_correlometer_init(9, p9, slot_mem_correlometer); p9 += slot_mem_correlometer;
+slot9_m6.mod_oscilloscope_init(9, p9, slot_mem_oscilloscope); p9 += slot_mem_oscilloscope;
+slot9_m7.mod_monitor_init(9, p9, slot_mem_monitor); p9 += slot_mem_monitor;
+slot9_m8.mod_vumeter_init(9, p9, slot_mem_vumeter); p9 += slot_mem_vumeter;
+slot9_m9.mod_spectrogram_init(9, p9, slot_mem_spectrogram); p9 += slot_mem_spectrogram;
+
+// Host UI state
+ui_scale = 1.0;
+
+band_xfade = 0;
+band_focus_last_lp = lp120_active;
+band_focus_last_hi = mid_high_focus;
+xover_srate = 0;
+xover1_smooth = xover1_hz;
+xover2_smooth = xover2_hz;
+xover1_coeff_fc = -1;
+xover2_coeff_fc = -1;
+band_xfade_a = 1;
+band_xfade_b = 0;
+
+lp1_b0 = 1; lp1_b1 = 0; lp1_b2 = 0; lp1_a1 = 0; lp1_a2 = 0;
+hp1_b0 = 1; hp1_b1 = 0; hp1_b2 = 0; hp1_a1 = 0; hp1_a2 = 0;
+lp2_b0 = 1; lp2_b1 = 0; lp2_b2 = 0; lp2_a1 = 0; lp2_a2 = 0;
+hp2_b0 = 1; hp2_b1 = 0; hp2_b2 = 0; hp2_a1 = 0; hp2_a2 = 0;
+
+function ResetSlots() (
+  active_slot1_type == 1 ? slot1_m1.mod_meter_reset() : active_slot1_type == 2 ? slot1_m2.mod_spectrum_reset() : active_slot1_type == 3 ? slot1_m3.mod_phase_reset() : active_slot1_type == 4 ? slot1_m4.mod_correlometer_reset() : active_slot1_type == 5 ? slot1_m5.mod_stereo_reset() : active_slot1_type == 6 ? slot1_m6.mod_oscilloscope_reset() : active_slot1_type == 8 ? slot1_m8.mod_vumeter_reset() : active_slot1_type == 9 ? slot1_m9.mod_spectrogram_reset();
+  active_slot2_type == 1 ? slot2_m1.mod_meter_reset() : active_slot2_type == 2 ? slot2_m2.mod_spectrum_reset() : active_slot2_type == 3 ? slot2_m3.mod_phase_reset() : active_slot2_type == 4 ? slot2_m4.mod_correlometer_reset() : active_slot2_type == 5 ? slot2_m5.mod_stereo_reset() : active_slot2_type == 6 ? slot2_m6.mod_oscilloscope_reset() : active_slot2_type == 8 ? slot2_m8.mod_vumeter_reset() : active_slot2_type == 9 ? slot2_m9.mod_spectrogram_reset();
+  active_slot3_type == 1 ? slot3_m1.mod_meter_reset() : active_slot3_type == 2 ? slot3_m2.mod_spectrum_reset() : active_slot3_type == 3 ? slot3_m3.mod_phase_reset() : active_slot3_type == 4 ? slot3_m4.mod_correlometer_reset() : active_slot3_type == 5 ? slot3_m5.mod_stereo_reset() : active_slot3_type == 6 ? slot3_m6.mod_oscilloscope_reset() : active_slot3_type == 8 ? slot3_m8.mod_vumeter_reset() : active_slot3_type == 9 ? slot3_m9.mod_spectrogram_reset();
+  active_slot4_type == 1 ? slot4_m1.mod_meter_reset() : active_slot4_type == 2 ? slot4_m2.mod_spectrum_reset() : active_slot4_type == 3 ? slot4_m3.mod_phase_reset() : active_slot4_type == 4 ? slot4_m4.mod_correlometer_reset() : active_slot4_type == 5 ? slot4_m5.mod_stereo_reset() : active_slot4_type == 6 ? slot4_m6.mod_oscilloscope_reset() : active_slot4_type == 8 ? slot4_m8.mod_vumeter_reset() : active_slot4_type == 9 ? slot4_m9.mod_spectrogram_reset();
+  active_slot5_type == 1 ? slot5_m1.mod_meter_reset() : active_slot5_type == 2 ? slot5_m2.mod_spectrum_reset() : active_slot5_type == 3 ? slot5_m3.mod_phase_reset() : active_slot5_type == 4 ? slot5_m4.mod_correlometer_reset() : active_slot5_type == 5 ? slot5_m5.mod_stereo_reset() : active_slot5_type == 6 ? slot5_m6.mod_oscilloscope_reset() : active_slot5_type == 8 ? slot5_m8.mod_vumeter_reset() : active_slot5_type == 9 ? slot5_m9.mod_spectrogram_reset();
+  active_slot6_type == 1 ? slot6_m1.mod_meter_reset() : active_slot6_type == 2 ? slot6_m2.mod_spectrum_reset() : active_slot6_type == 3 ? slot6_m3.mod_phase_reset() : active_slot6_type == 4 ? slot6_m4.mod_correlometer_reset() : active_slot6_type == 5 ? slot6_m5.mod_stereo_reset() : active_slot6_type == 6 ? slot6_m6.mod_oscilloscope_reset() : active_slot6_type == 8 ? slot6_m8.mod_vumeter_reset() : active_slot6_type == 9 ? slot6_m9.mod_spectrogram_reset();
+  active_slot7_type == 1 ? slot7_m1.mod_meter_reset() : active_slot7_type == 2 ? slot7_m2.mod_spectrum_reset() : active_slot7_type == 3 ? slot7_m3.mod_phase_reset() : active_slot7_type == 4 ? slot7_m4.mod_correlometer_reset() : active_slot7_type == 5 ? slot7_m5.mod_stereo_reset() : active_slot7_type == 6 ? slot7_m6.mod_oscilloscope_reset() : active_slot7_type == 8 ? slot7_m8.mod_vumeter_reset() : active_slot7_type == 9 ? slot7_m9.mod_spectrogram_reset();
+  active_slot8_type == 1 ? slot8_m1.mod_meter_reset() : active_slot8_type == 2 ? slot8_m2.mod_spectrum_reset() : active_slot8_type == 3 ? slot8_m3.mod_phase_reset() : active_slot8_type == 4 ? slot8_m4.mod_correlometer_reset() : active_slot8_type == 5 ? slot8_m5.mod_stereo_reset() : active_slot8_type == 6 ? slot8_m6.mod_oscilloscope_reset() : active_slot8_type == 8 ? slot8_m8.mod_vumeter_reset() : active_slot8_type == 9 ? slot8_m9.mod_spectrogram_reset();
+  active_slot9_type == 1 ? slot9_m1.mod_meter_reset() : active_slot9_type == 2 ? slot9_m2.mod_spectrum_reset() : active_slot9_type == 3 ? slot9_m3.mod_phase_reset() : active_slot9_type == 4 ? slot9_m4.mod_correlometer_reset() : active_slot9_type == 5 ? slot9_m5.mod_stereo_reset() : active_slot9_type == 6 ? slot9_m6.mod_oscilloscope_reset() : active_slot9_type == 8 ? slot9_m8.mod_vumeter_reset() : active_slot9_type == 9 ? slot9_m9.mod_spectrogram_reset();
+);
+
+@block
+// --- Monitor Band Focus Mutually Exclusive Logic & Legacy Migration ---
+!init_band_focus_done ? (
+  (band_focus_low == 1 && band_focus_high == 1) ? (
+    band_focus_mid = 1; slider28 = 1;
+    band_focus_low = 0; slider11 = 0;
+    band_focus_high = 0; slider19 = 0;
+  );
+  lp120_active = band_focus_low || band_focus_mid;
+  mid_high_focus = band_focus_high || band_focus_mid;
+  last_band_focus_low = band_focus_low;
+  last_band_focus_mid = band_focus_mid;
+  last_band_focus_high = band_focus_high;
+  init_band_focus_done = 1;
+);
+
+(band_focus_low != last_band_focus_low) ? (
+  band_focus_low ? (
+    band_focus_mid = 0; slider28 = 0; slider_automate(1<<27);
+    band_focus_high = 0; slider19 = 0; slider_automate(1<<18);
+    lp120_active = 1; mid_high_focus = 0;
+  ) : (
+    lp120_active = 0; mid_high_focus = 0;
+  );
+  last_band_focus_low = band_focus_low;
+  last_band_focus_mid = band_focus_mid;
+  last_band_focus_high = band_focus_high;
+) :
+(band_focus_mid != last_band_focus_mid) ? (
+  band_focus_mid ? (
+    band_focus_low = 0; slider11 = 0; slider_automate(1<<10);
+    band_focus_high = 0; slider19 = 0; slider_automate(1<<18);
+    lp120_active = 1; mid_high_focus = 1;
+  ) : (
+    lp120_active = 0; mid_high_focus = 0;
+  );
+  last_band_focus_low = band_focus_low;
+  last_band_focus_mid = band_focus_mid;
+  last_band_focus_high = band_focus_high;
+) :
+(band_focus_high != last_band_focus_high) ? (
+  band_focus_high ? (
+    band_focus_low = 0; slider11 = 0; slider_automate(1<<10);
+    band_focus_mid = 0; slider28 = 0; slider_automate(1<<27);
+    lp120_active = 0; mid_high_focus = 1;
+  ) : (
+    lp120_active = 0; mid_high_focus = 0;
+  );
+  last_band_focus_low = band_focus_low;
+  last_band_focus_mid = band_focus_mid;
+  last_band_focus_high = band_focus_high;
+);
+
+// Shadow Variables for Thread-Safety
+slot_changed = 0;
+slot1_type != active_slot1_type ? (active_slot1_type = slot1_type; slot_changed = 1;);
+slot2_type != active_slot2_type ? (active_slot2_type = slot2_type; slot_changed = 1;);
+slot3_type != active_slot3_type ? (active_slot3_type = slot3_type; slot_changed = 1;);
+slot4_type != active_slot4_type ? (active_slot4_type = slot4_type; slot_changed = 1;);
+slot5_type != active_slot5_type ? (active_slot5_type = slot5_type; slot_changed = 1;);
+slot6_type != active_slot6_type ? (active_slot6_type = slot6_type; slot_changed = 1;);
+slot7_type != active_slot7_type ? (active_slot7_type = slot7_type; slot_changed = 1;);
+slot8_type != active_slot8_type ? (active_slot8_type = slot8_type; slot_changed = 1;);
+slot9_type != active_slot9_type ? (active_slot9_type = slot9_type; slot_changed = 1;);
+slot_changed ? ResetSlots();
+
+// Reset on playback start/seek
+play_state&1 ? (
+  abs(play_position - last_play_pos) > 0.1 ? ResetSlots();
+  last_play_pos = play_position + samplesblock/srate;
+) : (
+  last_play_pos = -1;
+);
+
+// Call module block updates
+active_slot1_type > 0 ? ( active_slot1_type == 1 ? slot1_m1.mod_meter_block(tp_limit_mode, lufs_s_limit_db) : active_slot1_type == 2 ? slot1_m2.mod_spectrum_block(spec_avg_mode, spec_slope_db, spec_freeze, spec_smoothing_oct, spec_mode_ms, spec_hold, spec_show_peak) : active_slot1_type == 4 ? slot1_m4.mod_correlometer_block(spec_smoothing_oct) : active_slot1_type == 8 ? slot1_m8.mod_vumeter_block(vu_calib) : active_slot1_type == 9 ? slot1_m9.mod_spectrogram_block(spectrogram_speed); );
+active_slot2_type > 0 ? ( active_slot2_type == 1 ? slot2_m1.mod_meter_block(tp_limit_mode, lufs_s_limit_db) : active_slot2_type == 2 ? slot2_m2.mod_spectrum_block(spec_avg_mode, spec_slope_db, spec_freeze, spec_smoothing_oct, spec_mode_ms, spec_hold, spec_show_peak) : active_slot2_type == 4 ? slot2_m4.mod_correlometer_block(spec_smoothing_oct) : active_slot2_type == 8 ? slot2_m8.mod_vumeter_block(vu_calib) : active_slot2_type == 9 ? slot2_m9.mod_spectrogram_block(spectrogram_speed); );
+active_slot3_type > 0 ? ( active_slot3_type == 1 ? slot3_m1.mod_meter_block(tp_limit_mode, lufs_s_limit_db) : active_slot3_type == 2 ? slot3_m2.mod_spectrum_block(spec_avg_mode, spec_slope_db, spec_freeze, spec_smoothing_oct, spec_mode_ms, spec_hold, spec_show_peak) : active_slot3_type == 4 ? slot3_m4.mod_correlometer_block(spec_smoothing_oct) : active_slot3_type == 8 ? slot3_m8.mod_vumeter_block(vu_calib) : active_slot3_type == 9 ? slot3_m9.mod_spectrogram_block(spectrogram_speed); );
+active_slot4_type > 0 ? ( active_slot4_type == 1 ? slot4_m1.mod_meter_block(tp_limit_mode, lufs_s_limit_db) : active_slot4_type == 2 ? slot4_m2.mod_spectrum_block(spec_avg_mode, spec_slope_db, spec_freeze, spec_smoothing_oct, spec_mode_ms, spec_hold, spec_show_peak) : active_slot4_type == 4 ? slot4_m4.mod_correlometer_block(spec_smoothing_oct) : active_slot4_type == 8 ? slot4_m8.mod_vumeter_block(vu_calib) : active_slot4_type == 9 ? slot4_m9.mod_spectrogram_block(spectrogram_speed); );
+active_slot5_type > 0 ? ( active_slot5_type == 1 ? slot5_m1.mod_meter_block(tp_limit_mode, lufs_s_limit_db) : active_slot5_type == 2 ? slot5_m2.mod_spectrum_block(spec_avg_mode, spec_slope_db, spec_freeze, spec_smoothing_oct, spec_mode_ms, spec_hold, spec_show_peak) : active_slot5_type == 4 ? slot5_m4.mod_correlometer_block(spec_smoothing_oct) : active_slot5_type == 8 ? slot5_m8.mod_vumeter_block(vu_calib) : active_slot5_type == 9 ? slot5_m9.mod_spectrogram_block(spectrogram_speed); );
+active_slot6_type > 0 ? ( active_slot6_type == 1 ? slot6_m1.mod_meter_block(tp_limit_mode, lufs_s_limit_db) : active_slot6_type == 2 ? slot6_m2.mod_spectrum_block(spec_avg_mode, spec_slope_db, spec_freeze, spec_smoothing_oct, spec_mode_ms, spec_hold, spec_show_peak) : active_slot6_type == 4 ? slot6_m4.mod_correlometer_block(spec_smoothing_oct) : active_slot6_type == 8 ? slot6_m8.mod_vumeter_block(vu_calib) : active_slot6_type == 9 ? slot6_m9.mod_spectrogram_block(spectrogram_speed); );
+active_slot7_type > 0 ? ( active_slot7_type == 1 ? slot7_m1.mod_meter_block(tp_limit_mode, lufs_s_limit_db) : active_slot7_type == 2 ? slot7_m2.mod_spectrum_block(spec_avg_mode, spec_slope_db, spec_freeze, spec_smoothing_oct, spec_mode_ms, spec_hold, spec_show_peak) : active_slot7_type == 4 ? slot7_m4.mod_correlometer_block(spec_smoothing_oct) : active_slot7_type == 8 ? slot7_m8.mod_vumeter_block(vu_calib) : active_slot7_type == 9 ? slot7_m9.mod_spectrogram_block(spectrogram_speed); );
+active_slot8_type > 0 ? ( active_slot8_type == 1 ? slot8_m1.mod_meter_block(tp_limit_mode, lufs_s_limit_db) : active_slot8_type == 2 ? slot8_m2.mod_spectrum_block(spec_avg_mode, spec_slope_db, spec_freeze, spec_smoothing_oct, spec_mode_ms, spec_hold, spec_show_peak) : active_slot8_type == 4 ? slot8_m4.mod_correlometer_block(spec_smoothing_oct) : active_slot8_type == 8 ? slot8_m8.mod_vumeter_block(vu_calib) : active_slot8_type == 9 ? slot8_m9.mod_spectrogram_block(spectrogram_speed); );
+active_slot9_type > 0 ? ( active_slot9_type == 1 ? slot9_m1.mod_meter_block(tp_limit_mode, lufs_s_limit_db) : active_slot9_type == 2 ? slot9_m2.mod_spectrum_block(spec_avg_mode, spec_slope_db, spec_freeze, spec_smoothing_oct, spec_mode_ms, spec_hold, spec_show_peak) : active_slot9_type == 4 ? slot9_m4.mod_correlometer_block(spec_smoothing_oct) : active_slot9_type == 8 ? slot9_m8.mod_vumeter_block(vu_calib) : active_slot9_type == 9 ? slot9_m9.mod_spectrogram_block(spectrogram_speed); );
+
+gain = 10 ^ (out_gain_db / 20);
+dim_active ? gain *= 10 ^ (dim_db / 20);
+
+xover_srate != srate ? (
+  xover_srate = srate;
+  band_xfade_a = exp(-1 / max(1, (0.01 * srate)));
+  band_xfade_b = 1 - band_xfade_a;
+  xover1_smooth = xover1_hz;
+  xover2_smooth = xover2_hz;
+  xover1_coeff_fc = -1;
+  xover2_coeff_fc = -1;
+
+  lp1_1_x1_l = lp1_1_x2_l = lp1_1_y1_l = lp1_1_y2_l = 0;
+  lp1_2_x1_l = lp1_2_x2_l = lp1_2_y1_l = lp1_2_y2_l = 0;
+  hp1_1_x1_l = hp1_1_x2_l = hp1_1_y1_l = hp1_1_y2_l = 0;
+  hp1_2_x1_l = hp1_2_x2_l = hp1_2_y1_l = hp1_2_y2_l = 0;
+  lp2_1_x1_l = lp2_1_x2_l = lp2_1_y1_l = lp2_1_y2_l = 0;
+  lp2_2_x1_l = lp2_2_x2_l = lp2_2_y1_l = lp2_2_y2_l = 0;
+  hp2_1_x1_l = hp2_1_x2_l = hp2_1_y1_l = hp2_1_y2_l = 0;
+  hp2_2_x1_l = hp2_2_x2_l = hp2_2_y1_l = hp2_2_y2_l = 0;
+
+  lp1_1_x1_r = lp1_1_x2_r = lp1_1_y1_r = lp1_1_y2_r = 0;
+  lp1_2_x1_r = lp1_2_x2_r = lp1_2_y1_r = lp1_2_y2_r = 0;
+  hp1_1_x1_r = hp1_1_x2_r = hp1_1_y1_r = hp1_1_y2_r = 0;
+  hp1_2_x1_r = hp1_2_x2_r = hp1_2_y1_r = hp1_2_y2_r = 0;
+  lp2_1_x1_r = lp2_1_x2_r = lp2_1_y1_r = lp2_1_y2_r = 0;
+  lp2_2_x1_r = lp2_2_x2_r = lp2_2_y1_r = lp2_2_y2_r = 0;
+  hp2_1_x1_r = hp2_1_x2_r = hp2_1_y1_r = hp2_1_y2_r = 0;
+  hp2_2_x1_r = hp2_2_x2_r = hp2_2_y1_r = hp2_2_y2_r = 0;
+);
+
+(lp120_active != band_focus_last_lp || mid_high_focus != band_focus_last_hi) ? (
+  (band_focus_last_lp || band_focus_last_hi) && (lp120_active || mid_high_focus) ? band_xfade = 0;
+  band_focus_last_lp = lp120_active;
+  band_focus_last_hi = mid_high_focus;
+);
+
+band_target = (lp120_active || mid_high_focus) ? 1 : 0;
+
+(band_target || band_xfade > 0.00001) ? (
+  x_t1 = max(40, min(1000, xover1_hz));
+  x_t2 = max(200, min(12000, xover2_hz));
+  x_t2 < x_t1 * 1.25 ? x_t2 = x_t1 * 1.25;
+
+  x_fc_a = exp(-samplesblock / max(1, (0.05 * srate)));
+  x_fc_b = 1 - x_fc_a;
+  xover1_smooth = xover1_smooth * x_fc_a + x_t1 * x_fc_b;
+  xover2_smooth = xover2_smooth * x_fc_a + x_t2 * x_fc_b;
+
+  (abs(xover1_smooth - xover1_coeff_fc) > 0.05 || abs(xover2_smooth - xover2_coeff_fc) > 0.05) ? (
+    xover1_coeff_fc = xover1_smooth;
+    xover2_coeff_fc = xover2_smooth;
+
+    q_butt = 0.70710678;
+
+    w0 = 2*$pi*xover1_smooth/srate;
+    cw = cos(w0);
+    sw = sin(w0);
+    alpha = sw / (2*q_butt);
+    a0 = 1 + alpha;
+    inv_a0 = 1 / a0;
+    a1 = (-2*cw) * inv_a0;
+    a2 = (1 - alpha) * inv_a0;
+    lp1_b0 = ((1 - cw) * 0.5) * inv_a0;
+    lp1_b1 = (1 - cw) * inv_a0;
+    lp1_b2 = lp1_b0;
+    hp1_b0 = ((1 + cw) * 0.5) * inv_a0;
+    hp1_b1 = (-(1 + cw)) * inv_a0;
+    hp1_b2 = hp1_b0;
+    lp1_a1 = a1; lp1_a2 = a2;
+    hp1_a1 = a1; hp1_a2 = a2;
+
+    w0 = 2*$pi*xover2_smooth/srate;
+    cw = cos(w0);
+    sw = sin(w0);
+    alpha = sw / (2*q_butt);
+    a0 = 1 + alpha;
+    inv_a0 = 1 / a0;
+    a1 = (-2*cw) * inv_a0;
+    a2 = (1 - alpha) * inv_a0;
+    lp2_b0 = ((1 - cw) * 0.5) * inv_a0;
+    lp2_b1 = (1 - cw) * inv_a0;
+    lp2_b2 = lp2_b0;
+    hp2_b0 = ((1 + cw) * 0.5) * inv_a0;
+    hp2_b1 = (-(1 + cw)) * inv_a0;
+    hp2_b2 = hp2_b0;
+    lp2_a1 = a1; lp2_a2 = a2;
+    hp2_a1 = a1; hp2_a2 = a2;
+  );
+);
+
+@sample
+l = spl0;
+r = spl1;
+
+// 1. PRE-MONITOR ANALYSIS
+active_slot1_type > 0 ? ( active_slot1_type == 1 ? slot1_m1.mod_meter_sample(l, r) : active_slot1_type == 3 ? slot1_m3.mod_phase_sample(l, r) : active_slot1_type == 8 ? slot1_m8.mod_vumeter_sample(l, r); );
+active_slot2_type > 0 ? ( active_slot2_type == 1 ? slot2_m1.mod_meter_sample(l, r) : active_slot2_type == 3 ? slot2_m3.mod_phase_sample(l, r) : active_slot2_type == 8 ? slot2_m8.mod_vumeter_sample(l, r); );
+active_slot3_type > 0 ? ( active_slot3_type == 1 ? slot3_m1.mod_meter_sample(l, r) : active_slot3_type == 3 ? slot3_m3.mod_phase_sample(l, r) : active_slot3_type == 8 ? slot3_m8.mod_vumeter_sample(l, r); );
+active_slot4_type > 0 ? ( active_slot4_type == 1 ? slot4_m1.mod_meter_sample(l, r) : active_slot4_type == 3 ? slot4_m3.mod_phase_sample(l, r) : active_slot4_type == 8 ? slot4_m8.mod_vumeter_sample(l, r); );
+active_slot5_type > 0 ? ( active_slot5_type == 1 ? slot5_m1.mod_meter_sample(l, r) : active_slot5_type == 3 ? slot5_m3.mod_phase_sample(l, r) : active_slot5_type == 8 ? slot5_m8.mod_vumeter_sample(l, r); );
+active_slot6_type > 0 ? ( active_slot6_type == 1 ? slot6_m1.mod_meter_sample(l, r) : active_slot6_type == 3 ? slot6_m3.mod_phase_sample(l, r) : active_slot6_type == 8 ? slot6_m8.mod_vumeter_sample(l, r); );
+active_slot7_type > 0 ? ( active_slot7_type == 1 ? slot7_m1.mod_meter_sample(l, r) : active_slot7_type == 3 ? slot7_m3.mod_phase_sample(l, r) : active_slot7_type == 8 ? slot7_m8.mod_vumeter_sample(l, r); );
+active_slot8_type > 0 ? ( active_slot8_type == 1 ? slot8_m1.mod_meter_sample(l, r) : active_slot8_type == 3 ? slot8_m3.mod_phase_sample(l, r) : active_slot8_type == 8 ? slot8_m8.mod_vumeter_sample(l, r); );
+active_slot9_type > 0 ? ( active_slot9_type == 1 ? slot9_m1.mod_meter_sample(l, r) : active_slot9_type == 3 ? slot9_m3.mod_phase_sample(l, r) : active_slot9_type == 8 ? slot9_m8.mod_vumeter_sample(l, r); );
+
+// 2. MONITOR ROUTING
+out_l = l; out_r = r;
+monitor_mode == 1 ? ( m = (out_l + out_r) * 0.5; out_l = m; out_r = m; );
+monitor_mode == 2 ? ( side = (l - r) * 0.5; out_l = side; out_r = -side; );
+
+band_xfade = band_xfade * band_xfade_a + band_target * band_xfade_b;
+
+(band_xfade > 0.00001) ? (
+  x = out_l;
+  y = lp1_b0*x + lp1_b1*lp1_1_x1_l + lp1_b2*lp1_1_x2_l - lp1_a1*lp1_1_y1_l - lp1_a2*lp1_1_y2_l + 10^-24;
+  lp1_1_x2_l = lp1_1_x1_l; lp1_1_x1_l = x; lp1_1_y2_l = lp1_1_y1_l; lp1_1_y1_l = y;
+  x = y;
+  y = lp1_b0*x + lp1_b1*lp1_2_x1_l + lp1_b2*lp1_2_x2_l - lp1_a1*lp1_2_y1_l - lp1_a2*lp1_2_y2_l + 10^-24;
+  lp1_2_x2_l = lp1_2_x1_l; lp1_2_x1_l = x; lp1_2_y2_l = lp1_2_y1_l; lp1_2_y1_l = y;
+  low_l = y;
+
+  x = out_l;
+  y = hp1_b0*x + hp1_b1*hp1_1_x1_l + hp1_b2*hp1_1_x2_l - hp1_a1*hp1_1_y1_l - hp1_a2*hp1_1_y2_l + 10^-24;
+  hp1_1_x2_l = hp1_1_x1_l; hp1_1_x1_l = x; hp1_1_y2_l = hp1_1_y1_l; hp1_1_y1_l = y;
+  x = y;
+  y = hp1_b0*x + hp1_b1*hp1_2_x1_l + hp1_b2*hp1_2_x2_l - hp1_a1*hp1_2_y1_l - hp1_a2*hp1_2_y2_l + 10^-24;
+  hp1_2_x2_l = hp1_2_x1_l; hp1_2_x1_l = x; hp1_2_y2_l = hp1_2_y1_l; hp1_2_y1_l = y;
+  hi1_l = y;
+
+  x = hi1_l;
+  y = lp2_b0*x + lp2_b1*lp2_1_x1_l + lp2_b2*lp2_1_x2_l - lp2_a1*lp2_1_y1_l - lp2_a2*lp2_1_y2_l + 10^-24;
+  lp2_1_x2_l = lp2_1_x1_l; lp2_1_x1_l = x; lp2_1_y2_l = lp2_1_y1_l; lp2_1_y1_l = y;
+  x = y;
+  y = lp2_b0*x + lp2_b1*lp2_2_x1_l + lp2_b2*lp2_2_x2_l - lp2_a1*lp2_2_y1_l - lp2_a2*lp2_2_y2_l + 10^-24;
+  lp2_2_x2_l = lp2_2_x1_l; lp2_2_x1_l = x; lp2_2_y2_l = lp2_2_y1_l; lp2_2_y1_l = y;
+  mid_l = y;
+
+  x = hi1_l;
+  y = hp2_b0*x + hp2_b1*hp2_1_x1_l + hp2_b2*hp2_1_x2_l - hp2_a1*hp2_1_y1_l - hp2_a2*hp2_1_y2_l + 10^-24;
+  hp2_1_x2_l = hp2_1_x1_l; hp2_1_x1_l = x; hp2_1_y2_l = hp2_1_y1_l; hp2_1_y1_l = y;
+  x = y;
+  y = hp2_b0*x + hp2_b1*hp2_2_x1_l + hp2_b2*hp2_2_x2_l - hp2_a1*hp2_2_y1_l - hp2_a2*hp2_2_y2_l + 10^-24;
+  hp2_2_x2_l = hp2_2_x1_l; hp2_2_x1_l = x; hp2_2_y2_l = hp2_2_y1_l; hp2_2_y1_l = y;
+  high_l = y;
+
+  x = out_r;
+  y = lp1_b0*x + lp1_b1*lp1_1_x1_r + lp1_b2*lp1_1_x2_r - lp1_a1*lp1_1_y1_r - lp1_a2*lp1_1_y2_r + 10^-24;
+  lp1_1_x2_r = lp1_1_x1_r; lp1_1_x1_r = x; lp1_1_y2_r = lp1_1_y1_r; lp1_1_y1_r = y;
+  x = y;
+  y = lp1_b0*x + lp1_b1*lp1_2_x1_r + lp1_b2*lp1_2_x2_r - lp1_a1*lp1_2_y1_r - lp1_a2*lp1_2_y2_r + 10^-24;
+  lp1_2_x2_r = lp1_2_x1_r; lp1_2_x1_r = x; lp1_2_y2_r = lp1_2_y1_r; lp1_2_y1_r = y;
+  low_r = y;
+
+  x = out_r;
+  y = hp1_b0*x + hp1_b1*hp1_1_x1_r + hp1_b2*hp1_1_x2_r - hp1_a1*hp1_1_y1_r - hp1_a2*hp1_1_y2_r + 10^-24;
+  hp1_1_x2_r = hp1_1_x1_r; hp1_1_x1_r = x; hp1_1_y2_r = hp1_1_y1_r; hp1_1_y1_r = y;
+  x = y;
+  y = hp1_b0*x + hp1_b1*hp1_2_x1_r + hp1_b2*hp1_2_x2_r - hp1_a1*hp1_2_y1_r - hp1_a2*hp1_2_y2_r + 10^-24;
+  hp1_2_x2_r = hp1_2_x1_r; hp1_2_x1_r = x; hp1_2_y2_r = hp1_2_y1_r; hp1_2_y1_r = y;
+  hi1_r = y;
+
+  x = hi1_r;
+  y = lp2_b0*x + lp2_b1*lp2_1_x1_r + lp2_b2*lp2_1_x2_r - lp2_a1*lp2_1_y1_r - lp2_a2*lp2_1_y2_r + 10^-24;
+  lp2_1_x2_r = lp2_1_x1_r; lp2_1_x1_r = x; lp2_1_y2_r = lp2_1_y1_r; lp2_1_y1_r = y;
+  x = y;
+  y = lp2_b0*x + lp2_b1*lp2_2_x1_r + lp2_b2*lp2_2_x2_r - lp2_a1*lp2_2_y1_r - lp2_a2*lp2_2_y2_r + 10^-24;
+  lp2_2_x2_r = lp2_2_x1_r; lp2_2_x1_r = x; lp2_2_y2_r = lp2_2_y1_r; lp2_2_y1_r = y;
+  mid_r = y;
+
+  x = hi1_r;
+  y = hp2_b0*x + hp2_b1*hp2_1_x1_r + hp2_b2*hp2_1_x2_r - hp2_a1*hp2_1_y1_r - hp2_a2*hp2_1_y2_r + 10^-24;
+  hp2_1_x2_r = hp2_1_x1_r; hp2_1_x1_r = x; hp2_1_y2_r = hp2_1_y1_r; hp2_1_y1_r = y;
+  x = y;
+  y = hp2_b0*x + hp2_b1*hp2_2_x1_r + hp2_b2*hp2_2_x2_r - hp2_a1*hp2_2_y1_r - hp2_a2*hp2_2_y2_r + 10^-24;
+  hp2_2_x2_r = hp2_2_x1_r; hp2_2_x1_r = x; hp2_2_y2_r = hp2_2_y1_r; hp2_2_y1_r = y;
+  high_r = y;
+
+  band_mode = lp120_active + mid_high_focus * 2;
+  band_mode == 1 ? (b_l = low_l; b_r = low_r;) : band_mode == 2 ? (b_l = high_l; b_r = high_r;) : (b_l = mid_l; b_r = mid_r;);
+  out_l = out_l * (1 - band_xfade) + b_l * band_xfade;
+  out_r = out_r * (1 - band_xfade) + b_r * band_xfade;
+);
+
+spl0 = out_l * gain;
+spl1 = out_r * gain;
+
+// 3. POST-MONITOR ANALYSIS
+active_slot1_type > 0 ? ( active_slot1_type == 2 ? slot1_m2.mod_spectrum_sample(spl0, spl1) : active_slot1_type == 4 ? slot1_m4.mod_correlometer_sample(spl0, spl1) : active_slot1_type == 5 ? slot1_m5.mod_stereo_sample(spl0, spl1) : active_slot1_type == 6 ? slot1_m6.mod_oscilloscope_sample(spl0, spl1) : active_slot1_type == 7 ? slot1_m7.mod_monitor_sample(spl0, spl1) : active_slot1_type == 9 ? slot1_m9.mod_spectrogram_sample(spl0, spl1); );
+active_slot2_type > 0 ? ( active_slot2_type == 2 ? slot2_m2.mod_spectrum_sample(spl0, spl1) : active_slot2_type == 4 ? slot2_m4.mod_correlometer_sample(spl0, spl1) : active_slot2_type == 5 ? slot2_m5.mod_stereo_sample(spl0, spl1) : active_slot2_type == 6 ? slot2_m6.mod_oscilloscope_sample(spl0, spl1) : active_slot2_type == 7 ? slot2_m7.mod_monitor_sample(spl0, spl1) : active_slot2_type == 9 ? slot2_m9.mod_spectrogram_sample(spl0, spl1); );
+active_slot3_type > 0 ? ( active_slot3_type == 2 ? slot3_m2.mod_spectrum_sample(spl0, spl1) : active_slot3_type == 4 ? slot3_m4.mod_correlometer_sample(spl0, spl1) : active_slot3_type == 5 ? slot3_m5.mod_stereo_sample(spl0, spl1) : active_slot3_type == 6 ? slot3_m6.mod_oscilloscope_sample(spl0, spl1) : active_slot3_type == 7 ? slot3_m7.mod_monitor_sample(spl0, spl1) : active_slot3_type == 9 ? slot3_m9.mod_spectrogram_sample(spl0, spl1); );
+active_slot4_type > 0 ? ( active_slot4_type == 2 ? slot4_m2.mod_spectrum_sample(spl0, spl1) : active_slot4_type == 4 ? slot4_m4.mod_correlometer_sample(spl0, spl1) : active_slot4_type == 5 ? slot4_m5.mod_stereo_sample(spl0, spl1) : active_slot4_type == 6 ? slot4_m6.mod_oscilloscope_sample(spl0, spl1) : active_slot4_type == 7 ? slot4_m7.mod_monitor_sample(spl0, spl1) : active_slot4_type == 9 ? slot4_m9.mod_spectrogram_sample(spl0, spl1); );
+active_slot5_type > 0 ? ( active_slot5_type == 2 ? slot5_m2.mod_spectrum_sample(spl0, spl1) : active_slot5_type == 4 ? slot5_m4.mod_correlometer_sample(spl0, spl1) : active_slot5_type == 5 ? slot5_m5.mod_stereo_sample(spl0, spl1) : active_slot5_type == 6 ? slot5_m6.mod_oscilloscope_sample(spl0, spl1) : active_slot5_type == 7 ? slot5_m7.mod_monitor_sample(spl0, spl1) : active_slot5_type == 9 ? slot5_m9.mod_spectrogram_sample(spl0, spl1); );
+active_slot6_type > 0 ? ( active_slot6_type == 2 ? slot6_m2.mod_spectrum_sample(spl0, spl1) : active_slot6_type == 4 ? slot6_m4.mod_correlometer_sample(spl0, spl1) : active_slot6_type == 5 ? slot6_m5.mod_stereo_sample(spl0, spl1) : active_slot6_type == 6 ? slot6_m6.mod_oscilloscope_sample(spl0, spl1) : active_slot6_type == 7 ? slot6_m7.mod_monitor_sample(spl0, spl1) : active_slot6_type == 9 ? slot6_m9.mod_spectrogram_sample(spl0, spl1); );
+active_slot7_type > 0 ? ( active_slot7_type == 2 ? slot7_m2.mod_spectrum_sample(spl0, spl1) : active_slot7_type == 4 ? slot7_m4.mod_correlometer_sample(spl0, spl1) : active_slot7_type == 5 ? slot7_m5.mod_stereo_sample(spl0, spl1) : active_slot7_type == 6 ? slot7_m6.mod_oscilloscope_sample(spl0, spl1) : active_slot7_type == 7 ? slot7_m7.mod_monitor_sample(spl0, spl1) : active_slot7_type == 9 ? slot7_m9.mod_spectrogram_sample(spl0, spl1); );
+active_slot8_type > 0 ? ( active_slot8_type == 2 ? slot8_m2.mod_spectrum_sample(spl0, spl1) : active_slot8_type == 4 ? slot8_m4.mod_correlometer_sample(spl0, spl1) : active_slot8_type == 5 ? slot8_m5.mod_stereo_sample(spl0, spl1) : active_slot8_type == 6 ? slot8_m6.mod_oscilloscope_sample(spl0, spl1) : active_slot8_type == 7 ? slot8_m7.mod_monitor_sample(spl0, spl1) : active_slot8_type == 9 ? slot8_m9.mod_spectrogram_sample(spl0, spl1); );
+active_slot9_type > 0 ? ( active_slot9_type == 2 ? slot9_m2.mod_spectrum_sample(spl0, spl1) : active_slot9_type == 4 ? slot9_m4.mod_correlometer_sample(spl0, spl1) : active_slot9_type == 5 ? slot9_m5.mod_stereo_sample(spl0, spl1) : active_slot9_type == 6 ? slot9_m6.mod_oscilloscope_sample(spl0, spl1) : active_slot9_type == 7 ? slot9_m7.mod_monitor_sample(spl0, spl1) : active_slot9_type == 9 ? slot9_m9.mod_spectrogram_sample(spl0, spl1); );
+
+@gfx 240 980
+// DPI support for Retina macOS / HiDPI Windows
+scale_retina = max(gfx_ext_retina, 1.0);
+scale_w = (gfx_w / 240) * scale_retina;
+scale_h = (gfx_h / 980) * scale_retina;
+scale = min(scale_w, scale_h);
+scale = min(max(scale, 0.45), 2.0); // Clamp scale
+ui_scale = scale;
+
+compact_mode = gfx_w < 300;
+scale_font_w = (gfx_w / 380) * scale_retina;
+scale_font_h = (gfx_h / 520) * scale_retina;
+scale_font = min(scale_font_w, scale_font_h);
+scale_font = min(max(scale_font, 0.45), 2.0);
+
+f_sz_small = max(11, floor(11 * scale_font));
+f_sz_norm = max(13, floor(13 * scale_font));
+f_sz_title = max(15, floor(16 * scale_font));
+compact_mode ? (
+  scale_font >= 0.55 ? (
+    f_sz_meter = max(18, floor(20 * scale_font));
+    f_sz_norm = max(15, floor(15 * scale_font));
+    f_sz_small = max(13, floor(13 * scale_font));
+  ) : (
+    f_sz_meter = max(10, floor(11 * (scale_font / 0.45)));
+  );
+) : (
+  f_sz_meter = max(12, floor(16 * scale_font));
+);
+
+gfx_r=c_bg_r; gfx_g=c_bg_g; gfx_b=c_bg_b; gfx_a=1;
+gfx_rect(0, 0, gfx_w, gfx_h);
+
+ui_click_l_raw = (mouse_cap&1) && !(last_mouse_cap&1);
+ui_click_r_raw = (mouse_cap&2) && !(last_mouse_cap&2);
+
+ui_block_clicks && ((mouse_cap&3) == 0) ? ui_block_clicks = 0;
+(menu_open || menu_ignore_click || menu_trigger) ? ui_block_clicks = 1;
+
+ui_click_l = ui_block_clicks ? 0 : ui_click_l_raw;
+ui_click_r = ui_block_clicks ? 0 : ui_click_r_raw;
+
+// Title
+gfx_r=c_header_r; gfx_g=c_header_g; gfx_b=c_header_b; gfx_a=1;
+header_h = max(20, floor(26 * scale));
+gfx_rect(0, 0, gfx_w, header_h);
+gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.92;
+gfx_setfont(1, #font_ui, f_sz_title);
+gfx_measurestr("Floop Master Control (Modular)", tw, th);
+gfx_x = (gfx_w - tw)/2; gfx_y = (header_h - th)/2;
+gfx_drawstr("Floop Master Control (Modular)");
+
+// C Button (Toggle Sliders)
+btn_w = max(18, floor(22 * scale));
+btn_h = max(16, floor(20 * scale));
+btn_x = gfx_w - floor(8 * scale) - btn_w;
+btn_y = (header_h - btn_h)/2;
+
+// Button Hover/Click logic
+hover_c = mouse_x >= btn_x && mouse_x < btn_x+btn_w && mouse_y >= btn_y && mouse_y < btn_y+btn_h;
+down_c = hover_c && (mouse_cap&1);
+hover_c && ui_click_l ? (
+  sliders_showing = slider_show(UI_SLIDER_MASK, -1) > 0;
+);
+
+// Draw C Button
+gfx_r=0.06; gfx_g=0.06; gfx_b=0.07; gfx_a=1;
+gfx_rect(btn_x, btn_y, btn_w, btn_h);
+sliders_showing ? (
+  down_c ? (gfx_r=0.14; gfx_g=0.62; gfx_b=0.32;) : hover_c ? (gfx_r=0.20; gfx_g=0.84; gfx_b=0.44;) : (gfx_r=0.17; gfx_g=0.75; gfx_b=0.40;);
+) : (
+  down_c ? (gfx_r=0.16; gfx_g=0.16; gfx_b=0.18;) : hover_c ? (gfx_r=0.24; gfx_g=0.24; gfx_b=0.26;) : (gfx_r=0.20; gfx_g=0.20; gfx_b=0.22;);
+);
+gfx_rect(btn_x+1, btn_y+1, btn_w-2, btn_h-2);
+sliders_showing ? (gfx_r=0.98; gfx_g=0.98; gfx_b=0.98; gfx_a=0.95;) : (gfx_r=0.9; gfx_g=0.9; gfx_b=0.9; gfx_a=0.85;);
+gfx_setfont(1, #font_ui, f_sz_norm);
+gfx_measurestr("C", cw, ch);
+gfx_x = btn_x + (btn_w - cw)/2; gfx_y = btn_y + (btn_h - ch)/2;
+gfx_drawstr("C");
+
+active_slots = 0;
+active_slot1_type > 0 ? active_slots += 1;
+active_slot2_type > 0 ? active_slots += 1;
+active_slot3_type > 0 ? active_slots += 1;
+active_slot4_type > 0 ? active_slots += 1;
+active_slot5_type > 0 ? active_slots += 1;
+active_slot6_type > 0 ? active_slots += 1;
+active_slot7_type > 0 ? active_slots += 1;
+active_slot8_type > 0 ? active_slots += 1;
+active_slot9_type > 0 ? active_slots += 1;
+
+avail_h = gfx_h - header_h - floor(10*scale);
+
+function DrawSlotHeader(x, y, w, h, slot_id, type) (
+  gfx_r=c_slot_r; gfx_g=c_slot_g; gfx_b=c_slot_b; gfx_a=1;
+  gfx_rect(x, y, w, h);
+  gfx_r=c_slot_edge_r; gfx_g=c_slot_edge_g; gfx_b=c_slot_edge_b; gfx_a=1;
+  gfx_rect(x, y, w, h, 0); // Outline
+  
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.70;
+  gfx_setfont(1, #font_ui, f_sz_norm);
+  sprintf(#slot_txt, "SLOT %d %s", slot_id, type == 0 ? "(Empty)" : type == 1 ? "- TP & LUFS METER" : type == 2 ? "- SPECTRUM ANALYZER" : type == 3 ? "- PHASE CORRELATION" : type == 4 ? "- MULTI-BAND PHASE" : type == 5 ? "- STEREO ANALYZER" : type == 6 ? "- OSCILLOSCOPE" : type == 7 ? "- MONITOR CONTROL" : type == 8 ? "- VU METER" : "- SPECTROGRAM");
+  gfx_x = x + floor(8*scale); gfx_y = y + floor(6*scale);
+  gfx_drawstr(#slot_txt);
+  
+  // + Button for menu
+  btn_w = max(18, floor(22 * scale));
+  btn_h = max(16, floor(20 * scale));
+  btn_x = x + w - btn_w - floor(6*scale);
+  btn_y = y + (h - btn_h)/2;
+  
+  hover = mouse_x >= btn_x && mouse_x < btn_x+btn_w && mouse_y >= btn_y && mouse_y < btn_y+btn_h;
+  down = hover && (mouse_cap&1);
+  
+  gfx_r=0.06; gfx_g=0.06; gfx_b=0.07; gfx_a=1;
+  gfx_rect(btn_x, btn_y, btn_w, btn_h);
+  down ? (gfx_r=0.16; gfx_g=0.16; gfx_b=0.18;) : hover ? (gfx_r=0.24; gfx_g=0.24; gfx_b=0.26;) : (gfx_r=0.20; gfx_g=0.20; gfx_b=0.22;);
+  gfx_rect(btn_x+1, btn_y+1, btn_w-2, btn_h-2);
+  
+  gfx_r=0.9; gfx_g=0.9; gfx_b=0.9; gfx_a=0.85;
+  gfx_setfont(1, #font_ui, f_sz_norm);
+  gfx_measurestr("+", tw, th);
+  gfx_x = btn_x + (btn_w - tw)/2; gfx_y = btn_y + (btn_h - th)/2;
+  gfx_drawstr("+");
+  
+  hover && ui_click_l ? (
+    ui_block_clicks = 1; ui_click_l = 0; ui_click_r = 0;
+    menu_open && menu_open_slot == slot_id ? (
+      menu_open = 0;
+      menu_ignore_click = 0;
+      menu_trigger = 0;
+    ) : (
+      menu_open_slot = slot_id;
+      menu_anchor_x = btn_x;
+      menu_anchor_y = btn_y + btn_h;
+      menu_trigger = 1;
+    );
+  );
+);
+
+active_slots > 0 ? (
+  // Se ci sono slot vuoti in mezzo, permetti di aggiungerne un altro alla fine se < 9
+  add_btn_h = (active_slots < 9) ? floor(24 * scale) : 0;
+  
+  header_bar_h = max(20, floor(22 * scale));
+  slot_h = floor((avail_h - add_btn_h) / active_slots);
+  embedded_narrow = (gfx_w / max(scale_retina, 1.0)) < 320;
+  (embedded_narrow && active_slots == 1) ? (
+    slot_h_cap = floor(((980 - 26 - 10 - 24) / 7) * scale);
+    slot_h_min = header_bar_h + floor(70 * scale) + 5;
+    slot_h_cap < slot_h_min ? slot_h_cap = slot_h_min;
+    slot_h > slot_h_cap ? slot_h = slot_h_cap;
+  );
+  curr_y = header_h + floor(5*scale);
+  min_slot_body_h = max(1, floor(24 * scale));
+  
+  // Render slots sequentially
+  active_slot1_type > 0 ? (
+    DrawSlotHeader(5, curr_y, gfx_w-10, header_bar_h, 1, active_slot1_type);
+    slot_body_y = curr_y + header_bar_h;
+    slot_body_h = max(0, slot_h - header_bar_h - 5);
+    slot_body_h >= min_slot_body_h ? (
+      active_slot1_type == 1 ? slot1_m1.mod_meter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot1_type == 2 ? slot1_m2.mod_spectrum_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot1_type == 3 ? slot1_m3.mod_phase_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot1_type == 4 ? slot1_m4.mod_correlometer_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot1_type == 5 ? slot1_m5.mod_stereo_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot1_type == 6 ? slot1_m6.mod_oscilloscope_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot1_type == 7 ? slot1_m7.mod_monitor_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot1_type == 8 ? slot1_m8.mod_vumeter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot1_type == 9 ? slot1_m9.mod_spectrogram_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale);
+    );
+    curr_y += slot_h;
+  );
+  active_slot2_type > 0 ? (
+    DrawSlotHeader(5, curr_y, gfx_w-10, header_bar_h, 2, active_slot2_type);
+    slot_body_y = curr_y + header_bar_h;
+    slot_body_h = max(0, slot_h - header_bar_h - 5);
+    slot_body_h >= min_slot_body_h ? (
+      active_slot2_type == 1 ? slot2_m1.mod_meter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot2_type == 2 ? slot2_m2.mod_spectrum_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot2_type == 3 ? slot2_m3.mod_phase_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot2_type == 4 ? slot2_m4.mod_correlometer_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot2_type == 5 ? slot2_m5.mod_stereo_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot2_type == 6 ? slot2_m6.mod_oscilloscope_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot2_type == 7 ? slot2_m7.mod_monitor_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot2_type == 8 ? slot2_m8.mod_vumeter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot2_type == 9 ? slot2_m9.mod_spectrogram_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale);
+    );
+    curr_y += slot_h;
+  );
+  active_slot3_type > 0 ? (
+    DrawSlotHeader(5, curr_y, gfx_w-10, header_bar_h, 3, active_slot3_type);
+    slot_body_y = curr_y + header_bar_h;
+    slot_body_h = max(0, slot_h - header_bar_h - 5);
+    slot_body_h >= min_slot_body_h ? (
+      active_slot3_type == 1 ? slot3_m1.mod_meter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot3_type == 2 ? slot3_m2.mod_spectrum_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot3_type == 3 ? slot3_m3.mod_phase_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot3_type == 4 ? slot3_m4.mod_correlometer_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot3_type == 5 ? slot3_m5.mod_stereo_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot3_type == 6 ? slot3_m6.mod_oscilloscope_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot3_type == 7 ? slot3_m7.mod_monitor_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot3_type == 8 ? slot3_m8.mod_vumeter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot3_type == 9 ? slot3_m9.mod_spectrogram_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale);
+    );
+    curr_y += slot_h;
+  );
+  active_slot4_type > 0 ? (
+    DrawSlotHeader(5, curr_y, gfx_w-10, header_bar_h, 4, active_slot4_type);
+    slot_body_y = curr_y + header_bar_h;
+    slot_body_h = max(0, slot_h - header_bar_h - 5);
+    slot_body_h >= min_slot_body_h ? (
+      active_slot4_type == 1 ? slot4_m1.mod_meter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot4_type == 2 ? slot4_m2.mod_spectrum_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot4_type == 3 ? slot4_m3.mod_phase_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot4_type == 4 ? slot4_m4.mod_correlometer_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot4_type == 5 ? slot4_m5.mod_stereo_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot4_type == 6 ? slot4_m6.mod_oscilloscope_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot4_type == 7 ? slot4_m7.mod_monitor_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot4_type == 8 ? slot4_m8.mod_vumeter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot4_type == 9 ? slot4_m9.mod_spectrogram_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale);
+    );
+    curr_y += slot_h;
+  );
+  active_slot5_type > 0 ? (
+    DrawSlotHeader(5, curr_y, gfx_w-10, header_bar_h, 5, active_slot5_type);
+    slot_body_y = curr_y + header_bar_h;
+    slot_body_h = max(0, slot_h - header_bar_h - 5);
+    slot_body_h >= min_slot_body_h ? (
+      active_slot5_type == 1 ? slot5_m1.mod_meter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot5_type == 2 ? slot5_m2.mod_spectrum_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot5_type == 3 ? slot5_m3.mod_phase_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot5_type == 4 ? slot5_m4.mod_correlometer_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot5_type == 5 ? slot5_m5.mod_stereo_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot5_type == 6 ? slot5_m6.mod_oscilloscope_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot5_type == 7 ? slot5_m7.mod_monitor_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot5_type == 8 ? slot5_m8.mod_vumeter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot5_type == 9 ? slot5_m9.mod_spectrogram_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale);
+    );
+    curr_y += slot_h;
+  );
+  active_slot6_type > 0 ? (
+    DrawSlotHeader(5, curr_y, gfx_w-10, header_bar_h, 6, active_slot6_type);
+    slot_body_y = curr_y + header_bar_h;
+    slot_body_h = max(0, slot_h - header_bar_h - 5);
+    slot_body_h >= min_slot_body_h ? (
+      active_slot6_type == 1 ? slot6_m1.mod_meter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot6_type == 2 ? slot6_m2.mod_spectrum_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot6_type == 3 ? slot6_m3.mod_phase_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot6_type == 4 ? slot6_m4.mod_correlometer_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot6_type == 5 ? slot6_m5.mod_stereo_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot6_type == 6 ? slot6_m6.mod_oscilloscope_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot6_type == 7 ? slot6_m7.mod_monitor_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot6_type == 8 ? slot6_m8.mod_vumeter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot6_type == 9 ? slot6_m9.mod_spectrogram_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale);
+    );
+    curr_y += slot_h;
+  );
+  active_slot7_type > 0 ? (
+    DrawSlotHeader(5, curr_y, gfx_w-10, header_bar_h, 7, active_slot7_type);
+    slot_body_y = curr_y + header_bar_h;
+    slot_body_h = max(0, slot_h - header_bar_h - 5);
+    slot_body_h >= min_slot_body_h ? (
+      active_slot7_type == 1 ? slot7_m1.mod_meter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot7_type == 2 ? slot7_m2.mod_spectrum_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot7_type == 3 ? slot7_m3.mod_phase_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot7_type == 4 ? slot7_m4.mod_correlometer_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot7_type == 5 ? slot7_m5.mod_stereo_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot7_type == 6 ? slot7_m6.mod_oscilloscope_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot7_type == 7 ? slot7_m7.mod_monitor_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot7_type == 8 ? slot7_m8.mod_vumeter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot7_type == 9 ? slot7_m9.mod_spectrogram_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale);
+    );
+    curr_y += slot_h;
+  );
+  active_slot8_type > 0 ? (
+    DrawSlotHeader(5, curr_y, gfx_w-10, header_bar_h, 8, active_slot8_type);
+    slot_body_y = curr_y + header_bar_h;
+    slot_body_h = max(0, slot_h - header_bar_h - 5);
+    slot_body_h >= min_slot_body_h ? (
+      active_slot8_type == 1 ? slot8_m1.mod_meter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot8_type == 2 ? slot8_m2.mod_spectrum_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot8_type == 3 ? slot8_m3.mod_phase_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot8_type == 4 ? slot8_m4.mod_correlometer_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot8_type == 5 ? slot8_m5.mod_stereo_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot8_type == 6 ? slot8_m6.mod_oscilloscope_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot8_type == 7 ? slot8_m7.mod_monitor_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot8_type == 8 ? slot8_m8.mod_vumeter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot8_type == 9 ? slot8_m9.mod_spectrogram_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale);
+    );
+    curr_y += slot_h;
+  );
+  active_slot9_type > 0 ? (
+    DrawSlotHeader(5, curr_y, gfx_w-10, header_bar_h, 9, active_slot9_type);
+    slot_body_y = curr_y + header_bar_h;
+    slot_body_h = max(0, slot_h - header_bar_h - 5);
+    slot_body_h >= min_slot_body_h ? (
+      active_slot9_type == 1 ? slot9_m1.mod_meter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot9_type == 2 ? slot9_m2.mod_spectrum_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot9_type == 3 ? slot9_m3.mod_phase_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot9_type == 4 ? slot9_m4.mod_correlometer_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot9_type == 5 ? slot9_m5.mod_stereo_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot9_type == 6 ? slot9_m6.mod_oscilloscope_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot9_type == 7 ? slot9_m7.mod_monitor_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot9_type == 8 ? slot9_m8.mod_vumeter_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale) : active_slot9_type == 9 ? slot9_m9.mod_spectrogram_gfx(5, slot_body_y, gfx_w-10, slot_body_h, scale);
+    );
+    curr_y += slot_h;
+  );
+  
+  // Add Module Button at the bottom
+  active_slots < 9 ? (
+    btn_w = gfx_w - 10;
+    btn_x = 5;
+    btn_y = curr_y + floor(2*scale);
+    
+    hover = mouse_x >= btn_x && mouse_x < btn_x+btn_w && mouse_y >= btn_y && mouse_y < btn_y+add_btn_h;
+    down = hover && (mouse_cap&1);
+    
+    gfx_r=0.06; gfx_g=0.06; gfx_b=0.07; gfx_a=1;
+    gfx_rect(btn_x, btn_y, btn_w, add_btn_h);
+    down ? (gfx_r=0.16; gfx_g=0.16; gfx_b=0.18;) : hover ? (gfx_r=0.24; gfx_g=0.24; gfx_b=0.26;) : (gfx_r=0.20; gfx_g=0.20; gfx_b=0.22;);
+    gfx_rect(btn_x+1, btn_y+1, btn_w-2, add_btn_h-2);
+    
+    gfx_r=0.9; gfx_g=0.9; gfx_b=0.9; gfx_a=0.85;
+    gfx_setfont(1, #font_ui, f_sz_norm);
+    gfx_measurestr("+ ADD MODULE", tw, th);
+    gfx_x = btn_x + (btn_w - tw)/2; gfx_y = btn_y + (add_btn_h - th)/2;
+    gfx_drawstr("+ ADD MODULE");
+    
+    hover && ui_click_l ? (
+      ui_block_clicks = 1; ui_click_l = 0; ui_click_r = 0;
+      // Find first empty slot
+      target_slot = 0;
+      active_slot1_type == 0 ? target_slot = 1 :
+      active_slot2_type == 0 ? target_slot = 2 :
+      active_slot3_type == 0 ? target_slot = 3 :
+      active_slot4_type == 0 ? target_slot = 4 :
+      active_slot5_type == 0 ? target_slot = 5 :
+      active_slot6_type == 0 ? target_slot = 6 :
+      active_slot7_type == 0 ? target_slot = 7 :
+      active_slot8_type == 0 ? target_slot = 8 :
+      active_slot9_type == 0 ? target_slot = 9;
+      
+      target_slot > 0 ? (
+        menu_open && menu_open_slot == target_slot ? (
+          menu_open = 0;
+          menu_ignore_click = 0;
+          menu_trigger = 0;
+        ) : (
+          menu_open_slot = target_slot;
+          menu_anchor_x = btn_x;
+          menu_anchor_y = btn_y + add_btn_h;
+          menu_trigger = 1;
+        );
+      );
+    );
+  );
+
+) : (
+  gfx_x = (gfx_w - tw)/2; gfx_y = gfx_h/2;
+  gfx_r=0.5; gfx_g=0.5; gfx_b=0.5;
+  gfx_drawstr("No modules loaded. Click '+' to configure.");
+  
+  // Big + button in the center when empty
+  btn_w = max(40, floor(40 * scale));
+  btn_x = (gfx_w - btn_w)/2;
+  btn_y = gfx_y + floor(20 * scale);
+  
+  hover = mouse_x >= btn_x && mouse_x < btn_x+btn_w && mouse_y >= btn_y && mouse_y < btn_y+btn_w;
+  gfx_r=0.3; gfx_g=0.3; gfx_b=0.35;
+  hover ? (gfx_r=0.4; gfx_g=0.4; gfx_b=0.45;);
+  gfx_rect(btn_x, btn_y, btn_w, btn_w);
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=1;
+  gfx_setfont(1, #font_ui, max(20, floor(24 * scale)));
+  gfx_measurestr("+", tw, th);
+  gfx_x = btn_x + (btn_w - tw)/2; gfx_y = btn_y + (btn_w - th)/2;
+  gfx_drawstr("+");
+  
+  hover && ui_click_l ? (
+    ui_block_clicks = 1; ui_click_l = 0; ui_click_r = 0;
+    menu_open && menu_open_slot == 1 ? (
+      menu_open = 0;
+      menu_ignore_click = 0;
+      menu_trigger = 0;
+    ) : (
+      menu_open_slot = 1;
+      menu_anchor_x = btn_x;
+      menu_anchor_y = btn_y + btn_w;
+      menu_trigger = 1;
+    );
+  );
+);
+
+// Popup Menu Handling
+menu_trigger ? (
+  menu_open = 1;
+  menu_ignore_click = 1;
+  menu_trigger = 0;
+);
+
+menu_open ? (
+  menu_ignore_click && !(mouse_cap&1) ? menu_ignore_click = 0;
+  click_trig_raw = ui_click_l_raw;
+  click_trig = click_trig_raw && !menu_ignore_click;
+  item_h = max(max(16, floor(20 * scale)), floor(f_sz_norm * 1.55));
+  menu_w = max(210, floor(240 * scale));
+  menu_h = item_h * 10;
+  mx = menu_anchor_x;
+  my = menu_anchor_y;
+  mx < 0 ? mx = 0;
+  my < 0 ? my = 0;
+  mx > gfx_w - menu_w ? mx = gfx_w - menu_w;
+  my > gfx_h - menu_h ? my = gfx_h - menu_h;
+  mx < 0 ? mx = 0;
+  my < 0 ? my = 0;
+
+  gfx_r=c_panel_r; gfx_g=c_panel_g; gfx_b=c_panel_b; gfx_a=0.98;
+  gfx_rect(mx, my, menu_w, menu_h);
+  gfx_r=c_panel_edge_r; gfx_g=c_panel_edge_g; gfx_b=c_panel_edge_b; gfx_a=1;
+  gfx_rect(mx, my, menu_w, menu_h, 0);
+
+  i = 0;
+  loop(10,
+    iy = my + i * item_h;
+    hov = mouse_x >= mx && mouse_x < mx + menu_w && mouse_y >= iy && mouse_y < iy + item_h;
+    gfx_r=c_bg_r; gfx_g=c_bg_g; gfx_b=c_bg_b; gfx_a=1;
+    hov ? (gfx_r=c_slot_edge_r; gfx_g=c_slot_edge_g; gfx_b=c_slot_edge_b;) : 0;
+    gfx_rect(mx+1, iy+1, menu_w-2, item_h-2);
+
+    i == 0 ? strcpy(#mi, "Empty") :
+    i == 1 ? strcpy(#mi, "True Peak & LUFS Meter") :
+    i == 2 ? strcpy(#mi, "Spectrum Analyzer") :
+    i == 3 ? strcpy(#mi, "Phase Correlation") :
+    i == 4 ? strcpy(#mi, "Multi-band Phase") :
+    i == 5 ? strcpy(#mi, "Stereo Analyzer") :
+    i == 6 ? strcpy(#mi, "Oscilloscope") :
+    i == 7 ? strcpy(#mi, "Monitor Control") :
+    i == 8 ? strcpy(#mi, "VU Meter") :
+    strcpy(#mi, "Spectrogram");
+
+    gfx_r=0.92; gfx_g=0.92; gfx_b=0.92; gfx_a=0.85;
+    gfx_setfont(1, #font_ui, f_sz_norm);
+    gfx_measurestr(#mi, tw, th);
+    gfx_x = mx + floor(8*scale);
+    gfx_y = iy + (item_h - th) * 0.5;
+    gfx_drawstr(#mi);
+
+    hov && click_trig ? (
+      type_val = i;
+      menu_open_slot == 1 && slot1_type != type_val ? (slider1 = slot1_type = type_val;) :
+      menu_open_slot == 2 && slot2_type != type_val ? (slider2 = slot2_type = type_val;) :
+      menu_open_slot == 3 && slot3_type != type_val ? (slider3 = slot3_type = type_val;) :
+      menu_open_slot == 4 && slot4_type != type_val ? (slider4 = slot4_type = type_val;) :
+      menu_open_slot == 5 && slot5_type != type_val ? (slider5 = slot5_type = type_val;) :
+      menu_open_slot == 6 && slot6_type != type_val ? (slider6 = slot6_type = type_val;) :
+      menu_open_slot == 7 && slot7_type != type_val ? (slider7 = slot7_type = type_val;) :
+      menu_open_slot == 8 && slot8_type != type_val ? (slider26 = slot8_type = type_val;) :
+      menu_open_slot == 9 && slot9_type != type_val ? (slider27 = slot9_type = type_val;);
+      menu_open = 0;
+    );
+
+    i += 1;
+  );
+
+  click_trig ? (
+    (mouse_x < mx || mouse_x >= mx + menu_w || mouse_y < my || mouse_y >= my + menu_h) ? menu_open = 0;
+  );
+);
+
+last_mouse_cap = mouse_cap;
+
+@serialize
+file_var(0, f_version);
+f_version == 0 ? f_version = 1;
+
+file_var(0, slot1_m2.view_offset_db); file_var(0, slot1_m6.scope_view_seconds); file_var(0, slot1_m6.scope_show_l); file_var(0, slot1_m6.scope_show_r); file_var(0, slot1_m8.vu_t99); file_var(0, slot1_m8.vu_os_target);
+file_var(0, slot2_m2.view_offset_db); file_var(0, slot2_m6.scope_view_seconds); file_var(0, slot2_m6.scope_show_l); file_var(0, slot2_m6.scope_show_r); file_var(0, slot2_m8.vu_t99); file_var(0, slot2_m8.vu_os_target);
+file_var(0, slot3_m2.view_offset_db); file_var(0, slot3_m6.scope_view_seconds); file_var(0, slot3_m6.scope_show_l); file_var(0, slot3_m6.scope_show_r); file_var(0, slot3_m8.vu_t99); file_var(0, slot3_m8.vu_os_target);
+file_var(0, slot4_m2.view_offset_db); file_var(0, slot4_m6.scope_view_seconds); file_var(0, slot4_m6.scope_show_l); file_var(0, slot4_m6.scope_show_r); file_var(0, slot4_m8.vu_t99); file_var(0, slot4_m8.vu_os_target);
+file_var(0, slot5_m2.view_offset_db); file_var(0, slot5_m6.scope_view_seconds); file_var(0, slot5_m6.scope_show_l); file_var(0, slot5_m6.scope_show_r); file_var(0, slot5_m8.vu_t99); file_var(0, slot5_m8.vu_os_target);
+file_var(0, slot6_m2.view_offset_db); file_var(0, slot6_m6.scope_view_seconds); file_var(0, slot6_m6.scope_show_l); file_var(0, slot6_m6.scope_show_r); file_var(0, slot6_m8.vu_t99); file_var(0, slot6_m8.vu_os_target);
+file_var(0, slot7_m2.view_offset_db); file_var(0, slot7_m6.scope_view_seconds); file_var(0, slot7_m6.scope_show_l); file_var(0, slot7_m6.scope_show_r); file_var(0, slot7_m8.vu_t99); file_var(0, slot7_m8.vu_os_target);
+file_var(0, slot8_m2.view_offset_db); file_var(0, slot8_m6.scope_view_seconds); file_var(0, slot8_m6.scope_show_l); file_var(0, slot8_m6.scope_show_r); file_var(0, slot8_m8.vu_t99); file_var(0, slot8_m8.vu_os_target);
+file_var(0, slot9_m2.view_offset_db); file_var(0, slot9_m6.scope_view_seconds); file_var(0, slot9_m6.scope_show_l); file_var(0, slot9_m6.scope_show_r); file_var(0, slot9_m8.vu_t99); file_var(0, slot9_m8.vu_os_target);

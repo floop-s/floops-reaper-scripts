@@ -1,0 +1,640 @@
+@init
+
+// Floop Master Control - Spectrum Analyzer Module
+// @author Floop-s
+
+function mod_spectrum_init(slot_id, mem_start, mem_size) local(ptr, i) (
+  ptr = mem_start;
+  this.slot_id = slot_id;
+  this.mem = mem_start;
+  
+  this.fft_size = 4096;
+  this.fft_overlap_factor = 4;
+  this.fft_step_size = this.fft_size / this.fft_overlap_factor;
+  this.fft_bins = this.fft_size / 2;
+  
+  // Align pointer to prevent FFT buffers from crossing 65536 element boundaries
+  this.ptr_rem = ptr % (this.fft_size * 2);
+  this.ptr_rem > 0 ? ptr += (this.fft_size * 2) - this.ptr_rem;
+  
+  this.fft_buf = ptr; ptr += this.fft_size * 2;
+  this.fft_buf_s = ptr; ptr += this.fft_size * 2;
+  this.spec_buf = ptr; ptr += this.fft_bins;
+  this.spec_buf_s = ptr; ptr += this.fft_bins;
+  this.spec_peak = ptr; ptr += this.fft_bins;
+  this.spec_peak_s = ptr; ptr += this.fft_bins;
+  this.win_buf = ptr; ptr += this.fft_size;
+  
+  this.disp_x_buf = ptr; ptr += 1024;
+  this.disp_k0_buf = ptr; ptr += 1024;
+  this.disp_k1_buf = ptr; ptr += 1024;
+  this.disp_tilt_buf = ptr; ptr += 1024;
+  
+  this.fft_ring_size = 8192; // Power of 2 for bitwise masking
+  this.fft_ring_mask = this.fft_ring_size - 1;
+  this.fft_ring_buf_m = ptr; ptr += this.fft_ring_size;
+  this.fft_ring_buf_s = ptr; ptr += this.fft_ring_size;
+  
+  this.fft_ring_wr = 0;
+  this.fft_ring_rd = 0;
+  
+  this.inv_log10 = 1/log(10);
+  this.inv_log2 = 1/log(2);
+  this.log_1000 = log(1000);
+  
+  this.win_sum = 0;
+  i = 0;
+  loop(this.fft_size,
+    this.win_buf[i] = 0.5 * (1 - cos(2*$pi*i/(this.fft_size-1)));
+    this.win_sum += this.win_buf[i];
+    i += 1;
+  );
+  
+  memset(this.spec_buf, 0, this.fft_bins);
+  memset(this.spec_buf_s, 0, this.fft_bins);
+  memset(this.spec_peak, 0, this.fft_bins);
+  memset(this.spec_peak_s, 0, this.fft_bins);
+  memset(this.fft_ring_buf_m, 0, this.fft_ring_size);
+  memset(this.fft_ring_buf_s, 0, this.fft_ring_size);
+  
+  this.spec_avg_ms = 300;
+  this.spec_slope_db = 4.5;
+  this.spec_freeze = 0;
+  this.spec_hold = 0;
+  this.smoothing_oct = 1; // 1/12 default
+  this.spec_mode_ms = 0; // 0=Stereo, 1=Mid/Side
+  
+  this.oct_smooth = 0;
+  
+  this.spec_disp_min_db = -90;
+  this.spec_disp_max_db = 18;
+  
+  this.view_offset_db = 0;
+  this.view_drag_active = 0;
+  this.view_drag_y0 = 0;
+  this.view_drag_offset0 = 0;
+);
+
+function mod_spectrum_reset() (
+  memset(this.fft_ring_buf_m, 0, this.fft_ring_size);
+  memset(this.fft_ring_buf_s, 0, this.fft_ring_size);
+  this.fft_ring_wr = 0;
+  this.fft_ring_rd = 0;
+  this.last_spec_w = 0;
+  this.view_drag_active = 0;
+);
+
+function mod_spectrum_block(avg_mode, slope_db, freeze, smoothing, mode_ms, hold, show_peak) (
+  this.spec_avg_ms = max(50, min(5000, avg_mode));
+  this.spec_slope_db = slope_db;
+  this.spec_freeze = freeze;
+  this.smoothing_oct = smoothing;
+  this.spec_mode_ms = mode_ms;
+  this.spec_hold = hold;
+  this.spec_show_peak = show_peak;
+);
+
+function mod_spectrum_sample(l, r) (
+  this.fft_ring_buf_m[this.fft_ring_wr] = (l + r) * 0.5;
+  this.fft_ring_buf_s[this.fft_ring_wr] = (l - r) * 0.5;
+  this.fft_ring_wr = (this.fft_ring_wr + 1) & this.fft_ring_mask;
+);
+
+function mod_spectrum_draw_graph(x, y, w, h, scale, buf_ptr, r, g, b, a, is_peak, fill, draw_points) local(prev_x, prev_y, i, k0, k1, mag_sum, mag_n, k, mag_val, db, ny, base_a, fade) (
+  base_a = a;
+  gfx_r = r; gfx_g = g; gfx_b = b; gfx_a = a;
+  prev_x = -1; prev_y = -1;
+  
+  i = 0;
+  loop(this.disp_bins,
+    k0 = this.disp_k0_buf[i];
+    k1 = this.disp_k1_buf[i];
+    
+    mag_sum = 0; mag_n = 0;
+    k = k0;
+    loop(k1 - k0 + 1,
+       is_peak ? (
+         buf_ptr[k] > mag_sum ? mag_sum = buf_ptr[k];
+       ) : (
+         mag_sum += buf_ptr[k];
+       );
+       mag_n += 1;
+       k += 1;
+    );
+    
+    mag_val = is_peak ? mag_sum : (mag_n > 0 ? mag_sum / mag_n : 0);
+    
+    db = 20 * log(mag_val + 0.000000000001) * this.inv_log10;
+    db += this.disp_tilt_buf[i];
+    db += this.view_offset_db;
+    
+    ny = y + h - (db - this.spec_disp_min_db) / (this.spec_disp_max_db - this.spec_disp_min_db) * h;
+    ny = max(y, min(y + h, ny));
+    
+    nx = x + this.disp_x_buf[i] * w;
+
+    fill ? (
+      fade = (db - this.spec_disp_min_db) / 12.0;
+      fade < 0 ? fade = 0;
+      fade > 1 ? fade = 1;
+      gfx_a = base_a * fade;
+    ) : (
+      gfx_a = base_a;
+    );
+
+    prev_x >= 0 ? (
+      fill ? (
+        gfx_triangle(prev_x, prev_y, nx, ny, nx, y+h, prev_x, y+h);
+      ) : (
+        gfx_line(prev_x, prev_y, nx, ny, 1);
+      );
+    );
+    draw_points && fill == 0 && (i % 2 == 0) ? (
+      gfx_rect(nx-1, ny-1, 2, 2);
+    );
+    prev_x = nx; prev_y = ny;
+    
+    i += 1;
+  );
+);
+
+function mod_spectrum_draw_btn(bx, by, bw, bh, lbl, state, scale, click_trig) local(hover, tw, th, fs) (
+  hover = mouse_x >= bx && mouse_x < bx+bw && mouse_y >= by && mouse_y < by+bh;
+  gfx_r=0.15; gfx_g=0.15; gfx_b=0.18; gfx_a=1;
+  hover ? (gfx_r=0.25; gfx_g=0.25; gfx_b=0.28;);
+  state ? (gfx_r=0.2; gfx_g=0.6; gfx_b=0.3;);
+  gfx_rect(bx, by, bw, bh);
+  
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.8;
+  fs = max(9, floor(bh * 0.72));
+  fs < f_sz_small ? fs = f_sz_small;
+  fs > f_sz_norm ? fs = f_sz_norm;
+  gfx_setfont(1, #font_ui, fs);
+  gfx_measurestr(lbl, tw, th);
+  gfx_x = bx + (bw - tw)/2; gfx_y = by + (bh - th)/2;
+  gfx_drawstr(lbl);
+  
+  hover && click_trig;
+);
+
+function mod_spectrum_gfx(x, y, w, h, scale) local(avail, r_ptr, si, sw, l_samp, r_samp, m, s, s_re, s_im, s_mag, s_re_s, s_im_s, s_mag_s, s_pk, s_pk_s, title_h, top_pad, bottom_pad, controls_h, spec_x, spec_y, spec_w, spec_h, f_min, f_max, lf_min, lf_max, lf_den, f, fx, db, dy, disp_oct, target_oct, btn_row_wide, btn_row_min, btn_w, btn_h, btn_gap, btn_x, btn_y, btn_total_w, btn_start_x, btn_w_sm, btn_w_avg, btn_w_ms, btn_w_sl, sm_hover, avg_hover, sl_hover, hover, hover_axis, axis_w, db_per_px, dy_px, t, k, mag, pk, db_pk, tilt, tw, th, tx, ty, val, wheel_step) (
+  this.mouse_click = ui_click_l;
+  this.mouse_click_r = ui_click_r;
+
+  // Background
+  gfx_r=c_panel_r; gfx_g=c_panel_g; gfx_b=c_panel_b; gfx_a=1;
+  gfx_rect(x, y, w, h);
+  gfx_r=c_panel_edge_r; gfx_g=c_panel_edge_g; gfx_b=c_panel_edge_b; gfx_a=1;
+  gfx_line(x, y, x+w, y);
+  gfx_line(x, y+h, x+w, y+h);
+  gfx_line(x, y, x, y+h);
+  gfx_line(x+w, y, x+w, y+h);
+  
+  // Calculate Constants
+  this.avg_tau_s = max(0.01, this.spec_avg_ms * 0.001);
+  this.spec_smooth_a = exp(-this.fft_step_size / max(1, (srate * this.avg_tau_s)));
+  this.spec_smooth_b = 1 - this.spec_smooth_a;
+  this.spec_peak_decay = exp(-1 / (2.0 * srate / this.fft_step_size));
+  
+  // Perceptual mapping: slider 0..2 => 1/3 .. 1/24 with logarithmic spacing.
+  disp_oct = 1 / (3 * pow(8, this.smoothing_oct / 2));
+  target_oct = pow(2, disp_oct * 0.5);
+  this.oct_smooth = (this.oct_smooth == 0) ? target_oct : (this.oct_smooth * 0.9 + target_oct * 0.1);
+
+  // Process FFT Queue
+  avail = (this.fft_ring_wr - this.fft_ring_rd + this.fft_ring_size) & this.fft_ring_mask;
+  avail > this.fft_size ? (
+     this.fft_ring_rd = (this.fft_ring_wr - this.fft_size) & this.fft_ring_mask;
+     avail = this.fft_size;
+  );
+  
+  while (avail >= this.fft_step_size) (
+     this.fft_ring_rd = (this.fft_ring_rd + this.fft_step_size) & this.fft_ring_mask;
+     avail -= this.fft_step_size;
+     
+     r_ptr = (this.fft_ring_rd - this.fft_size + this.fft_ring_size) & this.fft_ring_mask;
+     
+     si = 0;
+     loop(this.fft_size,
+        sw = this.win_buf[si];
+        m = this.fft_ring_buf_m[r_ptr];
+        s = this.fft_ring_buf_s[r_ptr];
+        
+        this.fft_buf[si*2] = m * sw;
+        this.fft_buf[si*2+1] = 0;
+        this.fft_buf_s[si*2] = s * sw;
+        this.fft_buf_s[si*2+1] = 0;
+        
+        r_ptr = (r_ptr + 1) & this.fft_ring_mask;
+        si += 1;
+     );
+     
+     fft(this.fft_buf, this.fft_size);
+     fft(this.fft_buf_s, this.fft_size);
+     fft_permute(this.fft_buf, this.fft_size);
+     fft_permute(this.fft_buf_s, this.fft_size);
+     
+     this.fft_buf[1] = 0;
+     this.fft_buf_s[1] = 0;
+     
+     si = 0;
+     loop(this.fft_bins,
+        s_re = this.fft_buf[si * 2];
+        s_im = this.fft_buf[si * 2 + 1];
+        s_mag = sqrt(s_re * s_re + s_im * s_im) * (2 / max(0.000000000001, this.win_sum));
+        
+        s_re_s = this.fft_buf_s[si * 2];
+        s_im_s = this.fft_buf_s[si * 2 + 1];
+        s_mag_s = sqrt(s_re_s * s_re_s + s_im_s * s_im_s) * (2 / max(0.000000000001, this.win_sum));
+        
+        (this.spec_freeze == 0) ? (
+          this.spec_hold ? (
+            s_mag > this.spec_buf[si] ? this.spec_buf[si] = s_mag;
+            s_mag_s > this.spec_buf_s[si] ? this.spec_buf_s[si] = s_mag_s;
+          ) : (
+            this.spec_buf[si] = this.spec_buf[si] * this.spec_smooth_a + s_mag * this.spec_smooth_b;
+            this.spec_buf_s[si] = this.spec_buf_s[si] * this.spec_smooth_a + s_mag_s * this.spec_smooth_b;
+          );
+          
+          s_pk = this.spec_peak[si] * this.spec_peak_decay;
+          s_mag > s_pk ? s_pk = s_mag;
+          this.spec_peak[si] = s_pk;
+          
+          s_pk_s = this.spec_peak_s[si] * this.spec_peak_decay;
+          s_mag_s > s_pk_s ? s_pk_s = s_mag_s;
+          this.spec_peak_s[si] = s_pk_s;
+        );
+        si += 1;
+     );
+  );
+
+  title_h = 0;
+  top_pad = max(4, floor(6 * scale));
+  bottom_pad = max(4, floor(6 * scale));
+  spec_x = x + floor(10*scale);
+  spec_w = w - floor(20*scale);
+  spec_w < 1 ? spec_w = 1;
+  
+  // Title removed to save space
+
+  // UI Control Buttons
+  btn_row_wide = spec_w >= floor(360 * scale);
+  btn_row_min = spec_w < floor(235 * scale);
+
+  btn_w = floor((btn_row_wide ? 28 : 24) * scale);
+  btn_h = max(floor((btn_row_wide ? 18 : 16) * scale), floor(f_sz_small * 1.6));
+  btn_gap = floor((btn_row_wide ? 10 : 8) * scale); // Increased gap to prevent misclicks
+  btn_y = y + top_pad;
+
+  btn_w_sm = floor((btn_row_wide ? 44 : 36) * scale);
+  btn_w_avg = floor((btn_row_wide ? 72 : 60) * scale);
+  btn_w_ms = floor((btn_row_wide ? 38 : 30) * scale);
+  btn_w_sl = floor((btn_row_wide ? 60 : 50) * scale);
+
+  btn_total_w = btn_row_min ? (
+    btn_w_ms + btn_gap + btn_w_avg + btn_gap + btn_w_sm + btn_gap + btn_w + btn_gap + btn_w
+  ) : (
+    btn_w_sl + btn_gap + btn_w_ms + btn_gap + btn_w_avg + btn_gap + btn_w_sm + btn_gap + btn_w + btn_gap + btn_w
+  );
+
+  controls_h = (btn_y - y) + btn_h + floor(4 * scale);
+  spec_y = y + controls_h;
+  spec_h = h - controls_h - bottom_pad;
+  spec_h < 1 ? spec_h = 1;
+  
+  // Always center buttons
+  btn_start_x = spec_x + (spec_w - btn_total_w) * 0.5;
+  btn_x = btn_start_x;
+
+  // Tooltip variables
+  this.tooltip_text = -1;
+
+  // 1. Slope Slider - slider15 (0..6) (hidden in compact)
+  btn_row_min ? 0 : (
+    sl_hover = mouse_x >= btn_x && mouse_x < btn_x+btn_w_sl && mouse_y >= btn_y && mouse_y < btn_y+btn_h;
+    sl_hover ? this.tooltip_text = "Slope";
+    gfx_r=0.15; gfx_g=0.15; gfx_b=0.18; gfx_a=1;
+    sl_hover ? (gfx_r=0.25; gfx_g=0.25; gfx_b=0.28;);
+    gfx_rect(btn_x, btn_y, btn_w_sl, btn_h);
+    gfx_r=0.15; gfx_g=0.55; gfx_b=0.35; gfx_a=0.9;
+    gfx_rect(btn_x+1, btn_y+1, max(0, (spec_slope_db / 6.0) * btn_w_sl - 2), btn_h-2);
+    gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.8;
+    sprintf(#sl_val, "%.1f", spec_slope_db);
+    gfx_measurestr(#sl_val, tw, th);
+    gfx_x = btn_x + (btn_w_sl - tw)/2; gfx_y = btn_y + (btn_h - th)/2;
+    gfx_drawstr(#sl_val);
+    sl_hover && (mouse_cap&1) ? (
+      val = (mouse_x - btn_x) / max(1, (btn_w_sl - 1));
+      val = max(0, min(1, val));
+      spec_slope_db = val * 6.0; slider15 = spec_slope_db;
+      slider_automate(1<<14);
+      this.spec_slope_db = spec_slope_db;
+    );
+    sl_hover && this.mouse_click_r ? (
+      abs(spec_slope_db - 0.0) < 0.1 ? spec_slope_db = 3.0 :
+      abs(spec_slope_db - 3.0) < 0.1 ? spec_slope_db = 4.5 :
+      abs(spec_slope_db - 4.5) < 0.1 ? spec_slope_db = 0.0 :
+      spec_slope_db = 4.5;
+      slider15 = spec_slope_db;
+      slider_automate(1<<14);
+      this.spec_slope_db = spec_slope_db;
+    );
+    btn_x += btn_w_sl + btn_gap;
+  );
+
+  // 2. M/S Mode (ST, M/S) - slider18
+  ms_lbl = spec_mode_ms == 0 ? "ST" : "M/S";
+  mod_spectrum_draw_btn(btn_x, btn_y, btn_w_ms, btn_h, ms_lbl, spec_mode_ms == 1, scale, this.mouse_click) ? (
+    spec_mode_ms = 1 - spec_mode_ms; slider18 = spec_mode_ms;
+    slider_automate(1<<17);
+    this.spec_mode_ms = spec_mode_ms;
+  );
+  (mouse_x >= btn_x && mouse_x < btn_x+btn_w_ms && mouse_y >= btn_y && mouse_y < btn_y+btn_h) ? this.tooltip_text = "Stereo / Mid-Side Mode";
+  btn_x += btn_w_ms + btn_gap;
+
+  // 3. Temporal smoothing slider (ms) - slider14
+  avg_hover = mouse_x >= btn_x && mouse_x < btn_x+btn_w_avg && mouse_y >= btn_y && mouse_y < btn_y+btn_h;
+  avg_hover ? this.tooltip_text = "Averaging Time (ms)";
+  gfx_r=0.15; gfx_g=0.15; gfx_b=0.18; gfx_a=1;
+  avg_hover ? (gfx_r=0.25; gfx_g=0.25; gfx_b=0.28;);
+  gfx_rect(btn_x, btn_y, btn_w_avg, btn_h);
+  gfx_r=0.15; gfx_g=0.55; gfx_b=0.35; gfx_a=0.9;
+  gfx_rect(btn_x+1, btn_y+1, max(0, ((spec_avg_mode - 50) / 4950.0) * btn_w_avg - 2), btn_h-2);
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.8;
+  sprintf(#avg_str, "%.0fms", spec_avg_mode);
+  gfx_measurestr(#avg_str, tw, th);
+  gfx_x = btn_x + (btn_w_avg - tw)/2; gfx_y = btn_y + (btn_h - th)/2;
+  gfx_drawstr(#avg_str);
+  avg_hover && (mouse_cap&1) ? (
+    val = (mouse_x - btn_x) / max(1, (btn_w_avg - 1));
+    val = max(0, min(1, val));
+    spec_avg_mode = 50 + val * 4950.0; slider14 = spec_avg_mode;
+    slider_automate(1<<13);
+    this.spec_avg_ms = spec_avg_mode;
+  );
+  avg_hover && this.mouse_click_r ? (
+    abs(spec_avg_mode - 100) < 40 ? spec_avg_mode = 300 :
+    abs(spec_avg_mode - 300) < 80 ? spec_avg_mode = 1000 :
+    abs(spec_avg_mode - 1000) < 120 ? spec_avg_mode = 2500 :
+    abs(spec_avg_mode - 2500) < 150 ? spec_avg_mode = 5000 :
+    abs(spec_avg_mode - 5000) < 200 ? spec_avg_mode = 100 :
+    spec_avg_mode = 300;
+    slider14 = spec_avg_mode;
+    slider_automate(1<<13);
+    this.spec_avg_ms = spec_avg_mode;
+  );
+  btn_x += btn_w_avg + btn_gap;
+
+  // 4. Smoothing Button (1/3..1/24) - slider17
+  disp_oct = 1 / (3 * pow(8, spec_smoothing_oct / 2));
+  disp_denom = 1/disp_oct;
+  sprintf(#sm_str, "1/%.0f", disp_denom);
+  sm_hover = mouse_x >= btn_x && mouse_x < btn_x+btn_w_sm && mouse_y >= btn_y && mouse_y < btn_y+btn_h;
+  sm_hover ? this.tooltip_text = "Frequency Smoothing";
+  gfx_r=0.15; gfx_g=0.15; gfx_b=0.18; gfx_a=1;
+  sm_hover ? (gfx_r=0.25; gfx_g=0.25; gfx_b=0.28;);
+  gfx_rect(btn_x, btn_y, btn_w_sm, btn_h);
+  gfx_r=0.15; gfx_g=0.55; gfx_b=0.35; gfx_a=0.9;
+  gfx_rect(btn_x+1, btn_y+1, max(0, (spec_smoothing_oct / 2.0) * btn_w_sm - 2), btn_h-2);
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.8;
+  gfx_setfont(1, #font_ui, max(f_sz_small, min(f_sz_norm, max(9, floor(btn_h * 0.72)))));
+  gfx_measurestr(#sm_str, tw, th);
+  gfx_x = btn_x + (btn_w_sm - tw)/2; gfx_y = btn_y + (btn_h - th)/2;
+  gfx_drawstr(#sm_str);
+  sm_hover && (mouse_cap&1) ? (
+    val = (mouse_x - btn_x) / max(1, (btn_w_sm - 1));
+    val = max(0, min(1, val));
+    spec_smoothing_oct = val * 2.0; slider17 = spec_smoothing_oct;
+    slider_automate(1<<16);
+    this.smoothing_oct = spec_smoothing_oct;
+  );
+  sm_hover && this.mouse_click_r ? (
+    abs(spec_smoothing_oct - 0.0) < 0.2 ? spec_smoothing_oct = 1.3333333333 :
+    abs(spec_smoothing_oct - 1.3333333333) < 0.25 ? spec_smoothing_oct = 2.0 :
+    abs(spec_smoothing_oct - 2.0) < 0.2 ? spec_smoothing_oct = 0.0 :
+    spec_smoothing_oct = 1.3333333333;
+    slider17 = spec_smoothing_oct;
+    slider_automate(1<<16);
+    this.smoothing_oct = spec_smoothing_oct;
+  );
+  btn_x += btn_w_sm + btn_gap;
+
+  // 5. Hold toggle (H) - slider22 (L click: Hold, R click: Toggle Peak Line)
+  h_hover = mouse_x >= btn_x && mouse_x < btn_x+btn_w && mouse_y >= btn_y && mouse_y < btn_y+btn_h;
+  mod_spectrum_draw_btn(btn_x, btn_y, btn_w, btn_h, "H", spec_hold, scale, this.mouse_click) ? (
+    spec_hold = 1 - spec_hold; slider22 = spec_hold;
+    slider_automate(1<<21);
+    this.spec_hold = spec_hold;
+  );
+  h_hover && this.mouse_click_r ? (
+    spec_show_peak = 1 - spec_show_peak; slider29 = spec_show_peak;
+    slider_automate(1<<28);
+    this.spec_show_peak = spec_show_peak;
+  );
+  h_hover ? this.tooltip_text = "L: Hold Peaks | R: Toggle Peak Line";
+  btn_x += btn_w + btn_gap;
+
+  // 6. Freeze Button (F) - slider16
+  mod_spectrum_draw_btn(btn_x, btn_y, btn_w, btn_h, "F", spec_freeze, scale, this.mouse_click) ? (
+    spec_freeze = 1 - spec_freeze; slider16 = spec_freeze;
+    slider_automate(1<<15);
+    this.spec_freeze = spec_freeze;
+  );
+
+  (mouse_x >= btn_x && mouse_x < btn_x+btn_w && mouse_y >= btn_y && mouse_y < btn_y+btn_h) ? this.tooltip_text = "Freeze Spectrum";
+  
+  // Draw Grid
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.05;
+  f_min = 20; f_max = srate * 0.5;
+  lf_min = log(f_min); lf_max = log(f_max); lf_den = lf_max - lf_min;
+  
+  f = 20;
+  while(f <= f_max + 0.5) (
+    (f % 10 != 0 && f < 100) || (f % 100 != 0 && f < 1000) || (f % 1000 != 0 && f < 10000) || (f % 10000 != 0) ? (
+      fx = spec_x + (log(f) - lf_min) / lf_den * spec_w;
+      gfx_line(fx, spec_y, fx, spec_y + spec_h);
+    );
+    f < 100 ? f += 5 : f < 1000 ? f += 50 : f < 10000 ? f += 500 : f += 5000;
+  );
+  
+  db = this.spec_disp_min_db;
+  while(db <= this.spec_disp_max_db) (
+    db % 18 == 0 ? (
+      dy = spec_y + spec_h - (db - this.spec_disp_min_db) / (this.spec_disp_max_db - this.spec_disp_min_db) * spec_h;
+      gfx_line(spec_x, dy, spec_x + spec_w, dy);
+    );
+    db += 6;
+  );
+
+  // Grid labels (major ticks only)
+  gfx_setfont(1, #font_ui, min(f_sz_small, max(9, floor(10 * scale))));
+  gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.45;
+  (spec_w >= floor(180 * scale)) ? (
+    f = 20;
+    while(f <= f_max + 0.5) (
+      (f == 20 || f == 50 || f == 100 || f == 200 || f == 500 || f == 1000 || f == 2000 || f == 5000 || f == 10000 || f == 20000) ? (
+        fx = spec_x + (log(f) - lf_min) / lf_den * spec_w;
+        f >= 1000 ? sprintf(#fs, "%dk", floor(f/1000)) : sprintf(#fs, "%d", f);
+        gfx_x = min(spec_x + spec_w - floor(16*scale), max(spec_x + floor(2*scale), fx + floor(2*scale)));
+        gfx_y = spec_y + spec_h - floor(12 * scale);
+        gfx_drawstr(#fs);
+      );
+      f < 100 ? f += 10 :
+      f < 1000 ? f += 100 :
+      f < 10000 ? f += 1000 :
+                f += 10000;
+    );
+  );
+  (spec_h >= floor(70 * scale)) ? (
+    db = this.spec_disp_min_db;
+    while(db <= this.spec_disp_max_db) (
+      db % 18 == 0 ? (
+        dy = spec_y + spec_h - (db - this.spec_disp_min_db) / (this.spec_disp_max_db - this.spec_disp_min_db) * spec_h;
+        sprintf(#dbs, "%+.0f", db);
+        gfx_x = spec_x + floor(2*scale);
+        gfx_y = dy - floor(6*scale);
+        gfx_drawstr(#dbs);
+      );
+      db += 18;
+    );
+  );
+
+  hover = mouse_x >= spec_x && mouse_x < spec_x + spec_w && mouse_y >= spec_y && mouse_y < spec_y + spec_h;
+  axis_w = max(floor(26 * scale), floor(18 * scale));
+  hover_axis = hover && mouse_x < spec_x + axis_w;
+
+  this.view_drag_active && (mouse_cap&1) == 0 ? this.view_drag_active = 0;
+  hover_axis && this.mouse_click ? (
+    this.view_drag_active = 1;
+    this.view_drag_y0 = mouse_y;
+    this.view_drag_offset0 = this.view_offset_db;
+  );
+  this.view_drag_active ? (
+    db_per_px = 0.12 / max(0.5, scale);
+    dy_px = this.view_drag_y0 - mouse_y;
+    this.view_offset_db = this.view_drag_offset0 + dy_px * db_per_px;
+    this.view_offset_db = max(-60, min(60, this.view_offset_db));
+  );
+
+  hover && this.mouse_click_r ? this.view_offset_db = 0;
+
+  (this.last_spec_w != spec_w || this.last_oct_smooth != this.oct_smooth || this.last_spec_slope != this.spec_slope_db || this.last_srate != srate) ? (
+    this.disp_bins = floor(spec_w);
+    this.disp_bins > 600 ? this.disp_bins = 600;
+    this.disp_bins < 160 ? this.disp_bins = 160;
+
+    f_min = 20; f_max = srate * 0.5;
+    lf_min = log(f_min); lf_max = log(f_max); lf_den = lf_max - lf_min;
+    
+    i = 0;
+    loop(this.disp_bins,
+      t = i / (this.disp_bins - 1);
+      lf = lf_min + t * lf_den;
+      f = exp(lf);
+      
+      f_lo = f / this.oct_smooth;
+      f_hi = f * this.oct_smooth;
+      k0 = floor(f_lo * this.fft_size / srate);
+      k1 = ceil(f_hi * this.fft_size / srate);
+      k0 < 0 ? k0 = 0; k1 > this.fft_bins - 1 ? k1 = this.fft_bins - 1; k1 < k0 ? k1 = k0;
+      
+      this.disp_k0_buf[i] = k0;
+      this.disp_k1_buf[i] = k1;
+      this.disp_tilt_buf[i] = this.spec_slope_db != 0 ? this.spec_slope_db * ((lf - this.log_1000) * this.inv_log2) : 0;
+      this.disp_x_buf[i] = t;
+      i += 1;
+    );
+    this.last_spec_w = spec_w;
+    this.last_oct_smooth = this.oct_smooth;
+    this.last_spec_slope = this.spec_slope_db;
+    this.last_srate = srate;
+  );
+
+  // Draw Spectrums
+  this.spec_mode_ms ? (
+    this.mod_spectrum_draw_graph(spec_x, spec_y, spec_w, spec_h, scale, this.spec_buf_s, 1.0, 0.65, 0.2, 0.25, 0, 1, 0); // Side Fill
+    this.mod_spectrum_draw_graph(spec_x, spec_y, spec_w, spec_h, scale, this.spec_buf_s, 0.2, 0.8, 0.9, 0.9, 0, 0, 0); // Side Line
+    this.spec_show_peak ? this.mod_spectrum_draw_graph(spec_x, spec_y, spec_w, spec_h, scale, this.spec_peak_s, 0.2, 0.8, 0.9, 0.4, 1, 0, 1); // Side Peak
+  );
+
+  this.mod_spectrum_draw_graph(spec_x, spec_y, spec_w, spec_h, scale, this.spec_buf, 0.20, 0.85, 0.45, this.spec_mode_ms ? 0.25 : 0.18, 0, 1, 0); // Mid/L Fill
+  this.mod_spectrum_draw_graph(spec_x, spec_y, spec_w, spec_h, scale, this.spec_buf, 0.6, 0.95, 0.7, 0.9, 0, 0, 0); // Mid/L Line
+  this.spec_show_peak ? this.mod_spectrum_draw_graph(spec_x, spec_y, spec_w, spec_h, scale, this.spec_peak, 0.9, 0.9, 0.9, 0.6, 1, 0, 0); // Mid/L Peak
+  
+  // Tooltip
+  hover && this.view_drag_active == 0 ? (
+    gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=0.16;
+    gfx_line(mouse_x, spec_y, mouse_x, spec_y + spec_h);
+    gfx_line(spec_x, mouse_y, spec_x + spec_w, mouse_y);
+    
+    t = (mouse_x - spec_x) / max(1, spec_w);
+    t = max(0, min(1, t));
+    lf = lf_min + t * lf_den;
+    f = exp(lf);
+    
+    k = floor(f * this.fft_size / srate);
+    k = max(0, min(this.fft_bins - 1, k));
+    mag = this.spec_buf[k];
+    pk = this.spec_peak[k];
+    db = 20 * log(mag + 0.000000000001) * this.inv_log10;
+    db_pk = 20 * log(pk + 0.000000000001) * this.inv_log10;
+    
+    this.spec_slope_db != 0 ? (
+      tilt = this.spec_slope_db * ((lf - this.log_1000) * this.inv_log2);
+      db += tilt;
+      db_pk += tilt;
+    );
+    db += this.view_offset_db;
+    db_pk += this.view_offset_db;
+    
+    gfx_setfont(1, #font_ui, max(f_sz_norm, floor(12 * scale)));
+    sprintf(#tooltip_str, "%.0f Hz  %+.1f dB  PK %+.1f  V%+.0f", f, db, db_pk, this.view_offset_db);
+    gfx_measurestr(#tooltip_str, tw, th);
+    
+    tx = mouse_x + 14;
+    ty = mouse_y - th - 14;
+    tx + tw > gfx_w ? tx = mouse_x - tw - 14;
+    ty < spec_y + floor(2 * scale) ? ty = mouse_y + 14;
+    tx < spec_x + floor(2 * scale) ? tx = spec_x + floor(2 * scale);
+    ty < spec_y + floor(2 * scale) ? ty = spec_y + floor(2 * scale);
+    tx + tw > spec_x + spec_w - floor(2 * scale) ? tx = spec_x + spec_w - tw - floor(2 * scale);
+    ty + th > spec_y + spec_h - floor(2 * scale) ? ty = spec_y + spec_h - th - floor(2 * scale);
+    
+    gfx_r=0.1; gfx_g=0.1; gfx_b=0.1; gfx_a=0.9;
+    gfx_rect(tx-2, ty-2, tw+4, th+4);
+    gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=1;
+    gfx_x = tx; gfx_y = ty;
+    gfx_drawstr(#tooltip_str);
+    
+    this.mouse_click && hover_axis == 0 ? (
+      memset(this.spec_peak, 0, this.fft_bins);
+      memset(this.spec_peak_s, 0, this.fft_bins);
+      this.spec_hold ? (
+        memset(this.spec_buf, 0, this.fft_bins);
+        memset(this.spec_buf_s, 0, this.fft_bins);
+      );
+    );
+  );
+
+  // Button Tooltip
+  this.tooltip_text >= 0 ? (
+    gfx_setfont(1, #font_ui, max(f_sz_norm, floor(12 * scale)));
+    gfx_measurestr(this.tooltip_text, tw, th);
+    
+    tx = mouse_x + 14;
+    ty = mouse_y - th - 14;
+    tx + tw > gfx_w ? tx = mouse_x - tw - 14;
+    ty < y + floor(2 * scale) ? ty = mouse_y + 14;
+    tx < x + floor(2 * scale) ? tx = x + floor(2 * scale);
+    ty < y + floor(2 * scale) ? ty = y + floor(2 * scale);
+    tx + tw > x + w - floor(2 * scale) ? tx = x + w - tw - floor(2 * scale);
+    ty + th > y + h - floor(2 * scale) ? ty = y + h - th - floor(2 * scale);
+    
+    gfx_r=0.1; gfx_g=0.1; gfx_b=0.1; gfx_a=0.9;
+    gfx_rect(tx-2, ty-2, tw+4, th+4);
+    gfx_r=1; gfx_g=1; gfx_b=1; gfx_a=1;
+    gfx_x = tx; gfx_y = ty;
+    gfx_drawstr(this.tooltip_text);
+  );
+
+);

@@ -1,16 +1,17 @@
 desc:Floop Master Control
-// @version 1.2.0
+// @version 1.3.0
 // @author Floop-s
 // @license GPL-3.0
 // @changelog
-//   Fix: 'Solo Side' now correctly mutes Mid (L=Side, R=-Side).
-//   New: Continuous Spectrum Smoothing slider (Right-Click for 1/3, 1/12, 1/24 presets).
-//   Tweak: Increased 'Slow' spectrum averaging time to ~5000ms.
+//   Performance: Removed redundant LUFS arrays and implemented True Peak ring buffer for lower CPU usage.
+//   DSP: Corrected Goniometer L/R orientation and improved Phase correlation math for noise immunity.
+//   UX: Extended LUFS meter down to -72 LUFS and stabilized low-frequency Phase readings.
+//   GFX: Re-engineered Goniometer rendering for true lossless visualization of every transient.
 // @about
 //   Integrated master monitoring and analysis tool for REAPER.
 //
 //   Includes:
-//   - True Peak limiting and metering
+//   - True Peak metering with target limits
 //   - LUFS integrated and short-term metering
 //   - Spectrum analysis
 //   - Phase correlation view
@@ -54,9 +55,9 @@ fft_step_size = fft_size / fft_overlap_factor;
 fft_bins = fft_size/2;
 buf_offset = 0;
 buf_l = 0;
-buf_r = 1024; 
+buf_r = 4096; 
 
-mem_ptr = 2048; 
+mem_ptr = 8192; 
 
 fft_buf = mem_ptr; mem_ptr += fft_size * 2; 
 fft_buf_s = mem_ptr; mem_ptr += fft_size * 2;
@@ -66,7 +67,8 @@ spec_buf = mem_ptr; mem_ptr += fft_bins;
 spec_buf_s = mem_ptr; mem_ptr += fft_bins;
 spec_peak = mem_ptr; mem_ptr += fft_bins;
 spec_peak_s = mem_ptr; mem_ptr += fft_bins;
-corr_spec_buf = mem_ptr; mem_ptr += fft_bins;
+corr_nom_buf = mem_ptr; mem_ptr += fft_bins;
+corr_denom_buf = mem_ptr; mem_ptr += fft_bins;
 win_buf = mem_ptr; mem_ptr += fft_size;
 
 // Ring Buffers for FFT
@@ -84,7 +86,6 @@ tp_hist_l = mem_ptr; mem_ptr += 32;
 tp_hist_r = mem_ptr; mem_ptr += 32;
 
 lufs_st_buf = mem_ptr; mem_ptr += 64;
-lufs_history_buf = mem_ptr; mem_ptr += 360000; // History buffer for Integrated Gating (~10 hours)
 lufs_hist_cnt = mem_ptr; mem_ptr += 1000; // Histogram counts (0.1 dB resolution)
 lufs_hist_p = mem_ptr; mem_ptr += 1000;   // Histogram power sums
 
@@ -116,7 +117,8 @@ i = 0;
 loop(fft_bins,
   spec_peak[i] = 0;
   spec_peak_s[i] = 0;
-  corr_spec_buf[i] = 0;
+  corr_nom_buf[i] = 0;
+  corr_denom_buf[i] = 0;
   i += 1;
 );
 
@@ -126,7 +128,7 @@ last_mouse_cap = 0;
 
 corr_smooth = 0;
 corr_srate = srate;
-corr_win = max(64, floor(corr_srate * 0.05));
+corr_win = max(64, floor(corr_srate * 0.30));
 corr_acc_ll = 0;
 corr_acc_rr = 0;
 corr_acc_lr = 0;
@@ -157,6 +159,7 @@ loop(sinc_sz,
 // Clear history
 memset(tp_hist_l, 0, sinc_sz);
 memset(tp_hist_r, 0, sinc_sz);
+tp_hist_idx = 0;
 
 lp_srate = 0;
 lp_x1_l = lp_x2_l = lp_y1_l = lp_y2_l = 0;
@@ -166,6 +169,7 @@ gonio_decay = 0.95;
 gonio_img = 3;
 gonio_img_w = 0;
 gonio_img_h = 0;
+last_gonio_offset = 0;
 
 scope_srate = srate;
 scope_max_seconds = 10; 
@@ -193,7 +197,6 @@ lufs_st_sum = 0;
 lufs_st_idx = 0;
 lufs_st_filled = 0;
 lufs_s_db = -120;
-lufs_history_count = 0;
 lufs_abs_sum = 0;
 lufs_abs_count = 0;
 lufs_i_db = -120;
@@ -211,12 +214,10 @@ function Reset() (
   lufs_st_n = 0;
   lufs_abs_sum = 0;
   lufs_abs_count = 0;
-  lufs_history_count = 0;
   
   // Clear histograms and buffers
   memset(lufs_hist_cnt, 0, 1000);
   memset(lufs_hist_p, 0, 1000);
-  memset(lufs_history_buf, 0, 360000); 
   memset(lufs_st_buf, 0, lufs_st_size);
   
   // Reset LUFS filters
@@ -228,6 +229,7 @@ function Reset() (
   // Reset True Peak history
   memset(tp_hist_l, 0, sinc_sz);
   memset(tp_hist_r, 0, sinc_sz);
+  tp_hist_idx = 0;
   tp_block_peak = 0;
   tp_max_peak = 0;
 );
@@ -349,7 +351,6 @@ lufs_srate != srate ? (
   lufs_st_idx = 0;
   lufs_st_filled = 0;
   lufs_s_db = -120;
-  lufs_history_count = 0;
   lufs_abs_sum = 0;
   lufs_abs_count = 0;
   lufs_i_db = -120;
@@ -377,7 +378,7 @@ scope_srate != srate ? (
 
 corr_srate != srate ? (
   corr_srate = srate;
-  corr_win = max(64, floor(corr_srate * 0.05));
+  corr_win = max(64, floor(corr_srate * 0.30));
   corr_acc_ll = 0;
   corr_acc_rr = 0;
   corr_acc_lr = 0;
@@ -389,27 +390,27 @@ l = spl0;
 r = spl1;
 
 // --- True Peak Sinc Interpolation (Reaper Style) ---
-// Shift history buffers
-tp_i = sinc_sz - 1;
-loop(sinc_sz - 1,
-    tp_hist_l[tp_i] = tp_hist_l[tp_i-1];
-    tp_hist_r[tp_i] = tp_hist_r[tp_i-1];
-    tp_i -= 1;
-);
-tp_hist_l[0] = l;
-tp_hist_r[0] = r;
+// Ring Buffer Update
+tp_hist_idx = (tp_hist_idx - 1);
+tp_hist_idx < 0 ? tp_hist_idx += sinc_sz;
+tp_hist_l[tp_hist_idx] = l;
+tp_hist_r[tp_hist_idx] = r;
 
 // Center sample (no interpolation)
-tp_center_idx = 16;
-tp_max_l = abs(tp_hist_l[tp_center_idx]);
-tp_max_r = abs(tp_hist_r[tp_center_idx]);
+tp_center_mod = (tp_hist_idx + 16);
+tp_center_mod >= sinc_sz ? tp_center_mod -= sinc_sz;
+tp_max_l = abs(tp_hist_l[tp_center_mod]);
+tp_max_r = abs(tp_hist_r[tp_center_mod]);
 
 // Phase 1 (0.25 offset)
 tp_sum_l = 0; tp_sum_r = 0;
 tp_i = 0;
+tp_read_idx = tp_hist_idx;
 loop(sinc_sz,
-    tp_sum_l += tp_hist_l[tp_i] * tp_s1[tp_i];
-    tp_sum_r += tp_hist_r[tp_i] * tp_s1[tp_i];
+    tp_sum_l += tp_hist_l[tp_read_idx] * tp_s1[tp_i];
+    tp_sum_r += tp_hist_r[tp_read_idx] * tp_s1[tp_i];
+    tp_read_idx += 1;
+    tp_read_idx >= sinc_sz ? tp_read_idx -= sinc_sz;
     tp_i += 1;
 );
 tp_max_l = max(tp_max_l, abs(tp_sum_l));
@@ -418,9 +419,12 @@ tp_max_r = max(tp_max_r, abs(tp_sum_r));
 // Phase 2 (0.50 offset)
 tp_sum_l = 0; tp_sum_r = 0;
 tp_i = 0;
+tp_read_idx = tp_hist_idx;
 loop(sinc_sz,
-    tp_sum_l += tp_hist_l[tp_i] * tp_s2[tp_i];
-    tp_sum_r += tp_hist_r[tp_i] * tp_s2[tp_i];
+    tp_sum_l += tp_hist_l[tp_read_idx] * tp_s2[tp_i];
+    tp_sum_r += tp_hist_r[tp_read_idx] * tp_s2[tp_i];
+    tp_read_idx += 1;
+    tp_read_idx >= sinc_sz ? tp_read_idx -= sinc_sz;
     tp_i += 1;
 );
 tp_max_l = max(tp_max_l, abs(tp_sum_l));
@@ -429,9 +433,12 @@ tp_max_r = max(tp_max_r, abs(tp_sum_r));
 // Phase 3 (0.75 offset)
 tp_sum_l = 0; tp_sum_r = 0;
 tp_i = 0;
+tp_read_idx = tp_hist_idx;
 loop(sinc_sz,
-    tp_sum_l += tp_hist_l[tp_i] * tp_s3[tp_i];
-    tp_sum_r += tp_hist_r[tp_i] * tp_s3[tp_i];
+    tp_sum_l += tp_hist_l[tp_read_idx] * tp_s3[tp_i];
+    tp_sum_r += tp_hist_r[tp_read_idx] * tp_s3[tp_i];
+    tp_read_idx += 1;
+    tp_read_idx >= sinc_sz ? tp_read_idx -= sinc_sz;
     tp_i += 1;
 );
 tp_max_l = max(tp_max_l, abs(tp_sum_l));
@@ -509,12 +516,6 @@ lufs_st_n >= lufs_st_block_len ? (
 
       // Absolute threshold gating (-70 LUFS)
       curr_400ms_p > gate_abs_p ? (
-        // Update history buffer (limit to ~10 hours to avoid overflow)
-        lufs_history_count < 360000 ? (
-          lufs_history_buf[lufs_history_count] = curr_400ms_p;
-          lufs_history_count += 1;
-        );
-
         // Update sums and histogram (Infinite)
         lufs_abs_sum += curr_400ms_p;
         lufs_abs_count += 1;
@@ -553,7 +554,7 @@ lufs_st_n >= lufs_st_block_len ? (
 
 buf_l[buf_offset] = l;
 buf_r[buf_offset] = r;
-buf_offset = (buf_offset + 1) % 1024;
+buf_offset = (buf_offset + 1) % 4096;
 
 mid = (l + r) * 0.5;
 side = (l - r) * 0.5;
@@ -681,9 +682,9 @@ fft_ring_pos >= fft_step_size ? (
     s_r_re = s_re - s_re_s; s_r_im = s_im - s_im_s;
     
     s_nom = s_l_re*s_r_re + s_l_im*s_r_im;
-    s_denom = sqrt(s_l_re*s_l_re + s_l_im*s_l_im) * sqrt(s_r_re*s_r_re + s_r_im*s_r_im) + 0.000000000001;
-    s_corr_val = s_nom / s_denom;
-    corr_spec_buf[si] = corr_spec_buf[si] * 0.90 + s_corr_val * 0.10;
+    s_denom = sqrt(s_l_re*s_l_re + s_l_im*s_l_im) * sqrt(s_r_re*s_r_re + s_r_im*s_r_im);
+    corr_nom_buf[si] = corr_nom_buf[si] * 0.90 + s_nom * 0.10;
+    corr_denom_buf[si] = corr_denom_buf[si] * 0.90 + s_denom * 0.10;
     
     // Smoothing & Peak
     spec_freeze == 0 ? (
@@ -1019,7 +1020,7 @@ tp_db = Clamp(tp_db, peak_min_db, peak_max_db);
 tp_limit = Clamp(tp_limit_db, peak_min_db, peak_max_db);
 tp_overs = tp_db - tp_limit;
 tp_overs < 0 ? tp_overs = 0;
-lufs_min_db = -36;
+lufs_min_db = -72;
 lufs_max_db = 6;
 lufs_valid = lufs_st_filled > 0;
 lufs_read_db = lufs_valid ? lufs_s_db : lufs_min_db;
@@ -1198,7 +1199,6 @@ Button(btn_x, btn_y, btn_w, btn_h, #lufs_btn, 0) ? (
     lufs_st_buf[i] = 0;
     i += 1;
   );
-  lufs_history_count = 0;
   lufs_abs_sum = 0;
   lufs_abs_count = 0;
   lufs_i_db = -120;
@@ -1287,7 +1287,7 @@ i = 0;
 loop(ticks_n,
   tx = bar_x + (tick_db - lufs_min_db) / (lufs_max_db - lufs_min_db) * bar_w;
   gfx_line(tx, bar_y, tx, bar_y + meter_bar_h);
-  (tick_db == lufs_min_db || tick_db == -24 || tick_db == -18 || tick_db == -12 || tick_db == -6 || tick_db == lufs_max_db) ? (
+  (tick_db == lufs_min_db || tick_db == -54 || tick_db == -36 || tick_db == -24 || tick_db == -18 || tick_db == -12 || tick_db == -6 || tick_db == lufs_max_db) ? (
     SetColor(1, 1, 1, 0.55);
     gfx_setfont(1, "Arial", f_sz_small);
     sprintf(#tstr, "%+.0f", tick_db);
@@ -1475,14 +1475,14 @@ phase_view_mode == 0 ? (
     k1 = ceil(f_hi * fft_size / srate);
     k0 < 0 ? k0 = 0; k1 > fft_bins - 1 ? k1 = fft_bins - 1; k1 < k0 ? k1 = k0;
     
-    c_sum = 0; c_n = 0;
+    c_nom_sum = 0; c_denom_sum = 0;
     k = k0;
     loop(k1 - k0 + 1,
-       c_sum += corr_spec_buf[k];
-       c_n += 1;
+       c_nom_sum += corr_nom_buf[k];
+       c_denom_sum += corr_denom_buf[k];
        k += 1;
     );
-    c_val = c_n > 0 ? c_sum / c_n : 0;
+    c_val = c_denom_sum > 0.000000000001 ? c_nom_sum / c_denom_sum : 0;
     c_val = Clamp(c_val, -1, 1);
     
     x = mb_x + t * mb_w;
@@ -1686,13 +1686,18 @@ gfx_line(gcx - g_sz, gcy + g_sz, gcx + g_sz, gcy - g_sz);
 gfx_line(gcx - g_sz, gcy - g_sz, gcx + g_sz, gcy + g_sz); 
 
 SetColor(0.35, 0.90, 0.55, 0.90);
+samples_to_draw = buf_offset - last_gonio_offset;
+samples_to_draw < 0 ? samples_to_draw += 4096;
+samples_to_draw > 4096 ? samples_to_draw = 4096;
+
 first_point = 1;
+start_idx = last_gonio_offset;
 i = 0;
-loop(1024, 
-  idx = (buf_offset + i) % 1024; 
+loop(samples_to_draw, 
+  idx = (start_idx + i) % 4096; 
   s_l = buf_l[idx];
   s_r = buf_r[idx];
-  gx = (s_l - s_r) * 0.707;
+  gx = (s_r - s_l) * 0.707;
   gy = (s_l + s_r) * 0.707;
   
   xx = gcx + gx * gscale;
@@ -1705,6 +1710,7 @@ loop(1024,
   );
   i += 1;
 );
+last_gonio_offset = buf_offset;
 
 gfx_dest = -1;
 gfx_x = gonio_x;

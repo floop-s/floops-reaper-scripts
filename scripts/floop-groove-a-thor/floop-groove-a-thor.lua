@@ -1,5 +1,5 @@
 -- @description Floop Groove-A-Thor
--- @version 1.0.1
+-- @version 1.1.0
 -- @author Floop-s
 -- @license GPL-3.0
 -- @about
@@ -7,18 +7,25 @@
 --
 --   **Groove Extraction and Injection tool for REAPER.**
 --
---   Extract the rhythmic DNA (timing and velocity) from any Audio or MIDI source and apply it to any target item (Audio or MIDI) with precision.
+--   Extract the rhythmic feel (timing and velocity) from any Audio or MIDI source and apply it to any target item (Audio or MIDI) with precision.
 --
 --   **Key Features:**
 --   * Groove Extraction from Audio (transients) or MIDI
 --   * Groove Injection with adjustable Timing, Velocity, and Grid Attraction
+--   * Phase Coherent Mode for multi-track drum phase preservation
 --   * Advanced Visualizer with LOCKED (Groove) and LIVE (Selection) modes
---   * Procedural Groove Generator (Swing, Push/Pull)
+--   * Procedural Groove Generator (Swing, Push/Pull, Velocity Curve)
 --   * Groove Library with Bank management
 --   * Non-destructive workflow with Undo support
 --
 -- @changelog
---   + Bugfix: Fixed audio loop start/end marker shifting when applying groove, ensuring loop boundary stability.
+--   + Generator: Added Push/Pull offset and hierarchical Velocity Curve.
+--   + Injector: Added Phase Coherent Mode for multi-track drum phase preservation.
+--   + Extraction: Added 15ms post-transient RMS lookahead for accurate audio velocity.
+--   + Extraction: Added Sanity Check warning for Base Grid mismatch.
+--   + Visualizer: Extraction preview fully syncs with real-time UI threshold/sensitivity.
+--   + Bugfix: Fixed audio loop boundaries shifting when applying groove.
+--   + Bugfix: Added Bank deletion via context menu.
 -- @provides
 --   [main] floop-groove-a-thor.lua
 
@@ -73,29 +80,29 @@ local GEN_GRID_DEFS = {
 
 -- Theme Colors
 local THEME_COLORS = {
-    [reaper.ImGui_Col_WindowBg()]          = 0x1B1B1BFF,
-    [reaper.ImGui_Col_ChildBg()]           = 0x222222FF,
-    [reaper.ImGui_Col_PopupBg()]           = 0x1D1D1DEF,
+    [reaper.ImGui_Col_WindowBg()]          = 0x1e1e23FF,
+    [reaper.ImGui_Col_ChildBg()]           = 0x1e1e23FF,
+    [reaper.ImGui_Col_PopupBg()]           = 0x1e1e23FF,
     [reaper.ImGui_Col_Text()]              = 0xE8E8E8FF,
     [reaper.ImGui_Col_TextDisabled()]      = 0x7A7A7AFF,
-    [reaper.ImGui_Col_TitleBg()]           = 0x181818FF,
-    [reaper.ImGui_Col_TitleBgActive()]     = 0x202020FF,
-    [reaper.ImGui_Col_TitleBgCollapsed()]  = 0x181818E6,
-    [reaper.ImGui_Col_Button()]            = 0x2E2E2EFF,
-    [reaper.ImGui_Col_ButtonHovered()]     = 0x3F3F3FFF,
-    [reaper.ImGui_Col_ButtonActive()]      = 0x515151FF,
-    [reaper.ImGui_Col_FrameBg()]           = 0x242424FF,
-    [reaper.ImGui_Col_FrameBgHovered()]    = 0x2C2C2CFF,
-    [reaper.ImGui_Col_FrameBgActive()]     = 0x333333FF,
+    [reaper.ImGui_Col_TitleBg()]           = 0x1a1a20FF,
+    [reaper.ImGui_Col_TitleBgActive()]     = 0x26262dFF,
+    [reaper.ImGui_Col_TitleBgCollapsed()]  = 0x1a1a20E6,
+    [reaper.ImGui_Col_Button()]            = 0x26262dFF,
+    [reaper.ImGui_Col_ButtonHovered()]     = 0x33333dFF,
+    [reaper.ImGui_Col_ButtonActive()]      = 0x40404cFF,
+    [reaper.ImGui_Col_FrameBg()]           = 0x26262dFF,
+    [reaper.ImGui_Col_FrameBgHovered()]    = 0x33333dFF,
+    [reaper.ImGui_Col_FrameBgActive()]     = 0x40404cFF,
     [reaper.ImGui_Col_SliderGrab()]        = 0x6FB7B2FF,
     [reaper.ImGui_Col_SliderGrabActive()]  = 0x80C7BFFF,
     [reaper.ImGui_Col_Border()]            = 0x2E2E2EFF,
     [reaper.ImGui_Col_Separator()]         = 0x333333FF,
     [reaper.ImGui_Col_SeparatorHovered()]  = 0x474747FF,
     [reaper.ImGui_Col_SeparatorActive()]   = 0x595959FF,
-    [reaper.ImGui_Col_Header()]            = 0x333333FF,
-    [reaper.ImGui_Col_HeaderHovered()]     = 0x424242FF,
-    [reaper.ImGui_Col_HeaderActive()]      = 0x515151FF,
+    [reaper.ImGui_Col_Header()]            = 0x26262dFF,
+    [reaper.ImGui_Col_HeaderHovered()]     = 0x33333dFF,
+    [reaper.ImGui_Col_HeaderActive()]      = 0x40404cFF,
     [reaper.ImGui_Col_ResizeGrip()]        = 0x6FB7B2FF,
     [reaper.ImGui_Col_ResizeGripHovered()] = 0x80C7BFFF,
     [reaper.ImGui_Col_ResizeGripActive()]  = 0x6FB7B2FF,
@@ -642,6 +649,23 @@ local function GetClosestGridQuantized(pos_qn, division)
     return math.floor(pos_qn / division + 0.5) * division
 end
 
+local function GetHeuristicGridPos(pos_qn, base_division)
+    local straight_div = base_division
+    local triplet_div = base_division * (2/3)
+    
+    local pos_straight = math.floor(pos_qn / straight_div + 0.5) * straight_div
+    local dist_straight = math.abs(pos_qn - pos_straight)
+    
+    local pos_triplet = math.floor(pos_qn / triplet_div + 0.5) * triplet_div
+    local dist_triplet = math.abs(pos_qn - pos_triplet)
+    
+    if dist_triplet < (dist_straight * 0.9) then
+        return pos_triplet, pos_qn - pos_triplet
+    else
+        return pos_straight, pos_qn - pos_straight
+    end
+end
+
 function GrooveCore:addGroove(groove, no_select)
     table.insert(self.pool, groove)
     if not no_select then
@@ -694,7 +718,7 @@ function GrooveCore:renameGroove(index, new_name)
     local groove = self.pool[index]
     if not groove then return false, "Invalid groove" end
 
-    new_name = new_name:match("^%s*(.-)%s*$") 
+    new_name = new_name:match("^%s*(.-)%s*$")
     if new_name == "" then return false, "Name cannot be empty" end
     if new_name == groove.name then return true end
 
@@ -775,10 +799,13 @@ function GrooveCore:getCurrentGroove()
     return self.pool[self.current_groove_index]
 end
 
-function GrooveCore:detectTransients(take)
+function GrooveCore:detectTransients(take, max_len)
     local item = reaper.GetMediaItemTake_Item(take)
     local item_start = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
     local item_len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+    
+    local analyze_len = item_len
+    if max_len and analyze_len > max_len then analyze_len = max_len end
 
     local transients = {}
     local accessor = reaper.CreateTakeAudioAccessor(take)
@@ -796,14 +823,17 @@ function GrooveCore:detectTransients(take)
 
     local rms_window_size = 1024
     local current_rms = 0.001
-    local sensitivity_mult = 1.0 + ((1.0 - (self.extraction.sensitivity or 0.5)) * 2.0)
+    local env_fast = 0.0
+    local prev_env_fast = 0.0
+    
+    -- Map sensitivity (0.0-1.0) to threshold multiplier (3.5-1.3) to prevent saturation.
+    local sensitivity_mult = 3.5 - ((self.extraction.sensitivity or 0.5) * 2.2)
 
     local threshold_db = self.extraction.threshold_db or -30.0
     local threshold_lin = 10 ^ (threshold_db / 20)
 
-    local total_samples = math.floor(item_len * samplerate)
+    local total_samples = math.floor(analyze_len * samplerate)
     local sample_pos = 0
-    local prev_val = 0
     local last_transient_sample = -lockout_samples * 2
 
     local hpf_fc = (self.extraction.hpf_hz or 0.0)
@@ -856,26 +886,64 @@ function GrooveCore:detectTransients(take)
             end
             abs_val = abs_val / channels
 
-            current_rms = (current_rms * 0.99) + (abs_val * 0.01)
+            if abs_val > env_fast then
+                env_fast = abs_val
+            else
+                env_fast = env_fast * 0.999
+            end
+
+            current_rms = (current_rms * 0.9999) + (abs_val * 0.0001)
 
             local dynamic_thresh = math.max(threshold_lin, current_rms * sensitivity_mult)
 
-            local diff = abs_val - prev_val
-
-            if diff > dynamic_thresh then
+            if env_fast > dynamic_thresh and prev_env_fast <= dynamic_thresh then
                 local current_abs_sample = sample_pos + i
                 if current_abs_sample > last_transient_sample + lockout_samples then
                     local time_in_item = current_abs_sample / samplerate
                     local abs_time = item_start + time_in_item
-                    table.insert(transients, { time = abs_time, val = abs_val })
+                    table.insert(transients, { time = abs_time, val = env_fast })
                     last_transient_sample = current_abs_sample
                 end
             end
-            prev_val = abs_val
+            prev_env_fast = env_fast
             i = i + 1
         end
         sample_pos = sample_pos + chunk_size
     end
+
+    -- Second pass: Post-transient RMS calculation for accurate velocity
+    local window_ms = 15.0 -- 15ms lookahead window
+    local window_samples = math.floor((window_ms / 1000.0) * samplerate)
+    local rms_buffer = reaper.new_array(window_samples * channels)
+    local max_rms = 0.0
+
+    for _, t in ipairs(transients) do
+        local time_in_item = t.time - item_start
+        local rv = reaper.GetAudioAccessorSamples(accessor, samplerate, channels, time_in_item, window_samples, rms_buffer)
+        
+        local hit_rms = 0.0
+        if rv and rv > 0 then
+            local sum_sq = 0.0
+            local count = rv * channels
+            for i = 1, count do
+                local s = rms_buffer[i]
+                sum_sq = sum_sq + (s * s)
+            end
+            hit_rms = math.sqrt(sum_sq / count)
+        else
+            hit_rms = t.val
+        end
+        
+        t.val = hit_rms
+        if hit_rms > max_rms then max_rms = hit_rms end
+    end
+
+    if max_rms > 0 then
+        for _, t in ipairs(transients) do
+            t.val = t.val / max_rms
+        end
+    end
+
     reaper.DestroyAudioAccessor(accessor)
     return transients
 end
@@ -912,8 +980,7 @@ function GrooveCore:analyzeSelection(target_item)
             local _, _, _, startppq, _, chan, pitch, vel = reaper.MIDI_GetNote(take, i)
             local note_qn = reaper.MIDI_GetProjQNFromPPQPos(take, startppq)
             local pos_qn_rel = note_qn - start_qn
-            local offset = getRelativeOffset(pos_qn_rel, groove.grid_base)
-            local grid_pos = GetClosestGridQuantized(pos_qn_rel, groove.grid_base)
+            local grid_pos, offset = GetHeuristicGridPos(pos_qn_rel, groove.grid_base)
             table.insert(groove.points, {
                 pos_qn = grid_pos,
                 offset = offset,
@@ -933,8 +1000,7 @@ function GrooveCore:analyzeSelection(target_item)
                 local abs_time = item_start + pos
                 local marker_qn = reaper.TimeMap2_timeToQN(0, abs_time)
                 local pos_qn_rel = marker_qn - start_qn
-                local offset = getRelativeOffset(pos_qn_rel, groove.grid_base)
-                local grid_pos = GetClosestGridQuantized(pos_qn_rel, groove.grid_base)
+                local grid_pos, offset = GetHeuristicGridPos(pos_qn_rel, groove.grid_base)
                 table.insert(groove.points, {
                     pos_qn = grid_pos,
                     offset = offset,
@@ -948,8 +1014,7 @@ function GrooveCore:analyzeSelection(target_item)
             for _, t in ipairs(transients) do
                 local marker_qn = reaper.TimeMap2_timeToQN(0, t.time)
                 local pos_qn_rel = marker_qn - start_qn
-                local offset = getRelativeOffset(pos_qn_rel, groove.grid_base)
-                local grid_pos = GetClosestGridQuantized(pos_qn_rel, groove.grid_base)
+                local grid_pos, offset = GetHeuristicGridPos(pos_qn_rel, groove.grid_base)
                 local val_lin = math.max(0.000001, t.val)
                 local db = 20 * math.log(val_lin, 10)
                 local raw_vel = math.floor(127 * (1 + (db / 60)))
@@ -963,18 +1028,37 @@ function GrooveCore:analyzeSelection(target_item)
                     raw_vel = raw_vel
                 })
             end
-            if #groove.points == 0 then return nil, "No transients found or markers." end
         end
     end
+
+    if #groove.points == 0 then return nil, "No notes/transients found." end
+
+    local total_abs_offset = 0
+    for _, p in ipairs(groove.points) do
+        total_abs_offset = total_abs_offset + math.abs(p.offset)
+    end
+    local avg_offset = total_abs_offset / #groove.points
+    if avg_offset > (groove.grid_base * 0.25) then
+        statusSet("Warning: Large timing offsets detected. Verify Base Grid matches audio (e.g. Triplets).", "warn")
+    end
+
     return groove, "Success"
 end
 
-function GrooveCore:generateSwingGroove(grid_base, swing_percent, preview_only)
+function GrooveCore:generateSwingGroove(grid_base, swing_percent, push_pull, dynamics, preview_only)
     local grid_name = "16"
-    if grid_base == 0.5 then grid_name = "8" end
-    if grid_base == 0.125 then grid_name = "32" end
+    for _, g in ipairs(GEN_GRID_DEFS) do
+        if math.abs(grid_base - g.val) < 0.001 then
+            grid_name = string.gsub(g.label, "1/", "")
+            break
+        end
+    end
+    
     local name = string.format("Swing %s %.0f%%", grid_name, swing_percent * 100)
     if preview_only then name = "PREVIEW: " .. name end
+
+    push_pull = push_pull or 0.0
+    dynamics = dynamics or 0.0
 
     local groove = {
         name = name,
@@ -983,20 +1067,46 @@ function GrooveCore:generateSwingGroove(grid_base, swing_percent, preview_only)
         source_type = "GENERATED",
         length_beats = 4.0
     }
-    local step = grid_base
-    local pos = 0
-    while pos < groove.length_beats - 0.001 do
-        local index = math.floor(pos / step + 0.5)
+    local num_steps = math.floor(groove.length_beats / grid_base + 0.5)
+    
+    local function is_close_to_grid(p, div)
+        local nearest = math.floor(p / div + 0.5) * div
+        return math.abs(p - nearest) < 0.001
+    end
+
+    for index = 0, num_steps - 1 do
+        local pos = index * grid_base
         local offset = 0
-        if index % 2 == 1 then offset = step * (2 * swing_percent - 1) end
+        
+        -- Apply swing offset (off-beats only).
+        if index % 2 == 1 then offset = grid_base * (2 * swing_percent - 1) end
+        
+        -- Apply global push/pull offset.
+        offset = offset + (grid_base * push_pull)
+
+        -- Calculate hierarchical velocity.
+        local vel = 1.0
+        if dynamics > 0 then
+            if is_close_to_grid(pos, 1.0) then
+                vel = 1.0 -- Downbeat.
+            elseif is_close_to_grid(pos, 0.5) then
+                vel = 1.0 - dynamics * 0.2 -- 8th note
+            elseif is_close_to_grid(pos, 0.25) then
+                vel = 1.0 - dynamics * 0.4 -- 16th note
+            elseif is_close_to_grid(pos, 0.125) then
+                vel = 1.0 - dynamics * 0.6 -- 32nd note
+            else
+                vel = 1.0 - dynamics * 0.5 -- Subdivisions.
+            end
+        end
+
         table.insert(groove.points, {
             pos_qn = pos,
             offset = offset,
-            velocity = 1.0,
+            velocity = vel,
             vel_delta = 0,
-            raw_vel = 100
+            raw_vel = math.floor(vel * 127 + 0.5)
         })
-        pos = pos + step
     end
 
     if not preview_only then
@@ -1063,6 +1173,35 @@ function GrooveCore:createBank(name)
     self:refreshBanks()
     self.current_bank = safe_name
     self.pool = {} -- Switch to empty new bank
+    return true
+end
+
+function GrooveCore:deleteBank(name)
+    local root = self:getGrooveRootPath()
+    if not root then return false, "No script path" end
+
+    if not name or name == "" then return false, "Invalid name" end
+    if name:find("[/\\]") then return false, "Invalid name" end
+
+    local dir_to_remove = root .. name
+
+    local ok
+    if OS_SEP == "\\" then
+        ok = os.execute('cmd /C rmdir /S /Q "' .. dir_to_remove .. '"')
+    else
+        ok = os.execute('rm -rf "' .. dir_to_remove .. '"')
+    end
+    if ok ~= true and ok ~= 0 then return false, "No such file or directory" end
+
+    if self.current_bank == name then
+        self.current_bank = nil
+        self.pool = {}
+        self.selected_indices = {}
+        self.current_groove_index = nil
+        self.last_clicked_index = nil
+    end
+
+    self:refreshBanks()
     return true
 end
 
@@ -1492,7 +1631,7 @@ function GrooveCore:_applyToMIDI(take, groove, start_qn, item_pos)
 
             if gp then
                 local rel_qn = evt.orig_qn - start_qn
-                local closest_grid_rel = GetClosestGridQuantized(rel_qn, groove.grid_base)
+                local closest_grid_rel, _ = GetHeuristicGridPos(rel_qn, groove.grid_base)
                 local target_grid_abs = start_qn + closest_grid_rel
 
                 local q_qn = evt.orig_qn + (target_grid_abs - evt.orig_qn) * self.application.quantize_amount
@@ -1587,7 +1726,6 @@ local function findBestStretchModeID()
             end
             j = j + 1
         end
-
     elseif algo_candidates.rubberband then
         selected_idx = algo_candidates.rubberband
         algo_name = "Rubber Band"
@@ -1600,10 +1738,10 @@ local function findBestStretchModeID()
             if not retval then break end
 
             if sub_str then
-                if sub_str:find("Transient") then 
+                if sub_str:find("Transient") then
                     best_rb_sub = j
                     best_rb_name = "Transient Optimized"
-                    break 
+                    break
                 elseif sub_str:find("Balanced") and best_rb_name ~= "Transient Optimized" then
                     best_rb_sub = j
                     best_rb_name = "Balanced"
@@ -1653,7 +1791,20 @@ function GrooveCore:setPitchModeChunk(item, take, mode_id, submode_flags)
     return false
 end
 
-function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_len, start_offs, play_rate)
+function GrooveCore:getEffectiveSourceLength(take)
+    local src = reaper.GetMediaItemTake_Source(take)
+    local retval, offs, len, rev = reaper.PCM_Source_GetSectionInfo(src)
+    if retval and len > 0 then
+        return len
+    end
+    local src_len, is_qn = reaper.GetMediaSourceLength(src)
+    if not is_qn and src_len > 0 then
+        return src_len
+    end
+    return nil
+end
+
+function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_len, start_offs, play_rate, master_audio_info)
     local pitch_mode, algo_name = findBestStretchModeID()
 
     if pitch_mode then
@@ -1690,46 +1841,108 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
         if DEBUG_MODE then dbg("Warning: Optimal stretch algorithm not found!") end
     end
 
+    -- [PLAYRATE NORMALIZATION]
+    -- Force item playrate to 1.0 and bake multiplier into stretch markers.
+    local baked_play_rate = 1.0
+    if math.abs(play_rate - 1.0) > 0.0001 then
+        baked_play_rate = play_rate
+        reaper.SetMediaItemTakeInfo_Value(take, "D_PLAYRATE", 1.0)
+        reaper.SetMediaItemInfo_Value(item, "D_LENGTH", item_len) -- Preserve visual length
+        
+        -- Scale existing marker src_pos to match baked rate.
+        local existing_markers = reaper.GetTakeNumStretchMarkers(take)
+        for i = 0, existing_markers - 1 do
+            local idx, pos, src_pos = reaper.GetTakeStretchMarker(take, i)
+            reaper.SetTakeStretchMarker(take, idx, pos, src_pos * baked_play_rate)
+        end
+        
+        if DEBUG_MODE then
+            dbg(string.format("[NORMALIZATION] Forced D_PLAYRATE to 1.0. Baking multiplier: %.4f", baked_play_rate))
+        end
+    end
+
+    local actual_src_len = self:getEffectiveSourceLength(take)
+
     local num_markers = reaper.GetTakeNumStretchMarkers(take)
     if num_markers == 0 then
-        local transients = self:detectTransients(take)
-        for _, t in ipairs(transients) do
-            local pos_in_item = t.time - item_pos
-            local src_pos = start_offs + (pos_in_item * play_rate)
-            reaper.SetTakeStretchMarker(take, -1, pos_in_item, src_pos)
+        if master_audio_info and master_audio_info.markers then
+            -- Clone markers from Master item.
+            for _, m in ipairs(master_audio_info.markers) do
+                local pos_in_item = m.abs_time - item_pos
+                if pos_in_item > 0 and pos_in_item < item_len then
+                    local src_pos = start_offs + (pos_in_item * baked_play_rate)
+                    reaper.SetTakeStretchMarker(take, -1, pos_in_item, src_pos)
+                end
+            end
+        else
+            local transients = self:detectTransients(take)
+            for _, t in ipairs(transients) do
+                local pos_in_item = t.time - item_pos
+                -- Apply baked rate to source position.
+                local src_pos = start_offs + (pos_in_item * baked_play_rate)
+                reaper.SetTakeStretchMarker(take, -1, pos_in_item, src_pos)
+            end
         end
+        
+        if actual_src_len then
+            if DEBUG_MODE then
+                dbg(string.format("[LOOP BOUNDARIES] actual_src_len: %.4f | start_offs: %.4f | baked_rate: %.4f", actual_src_len, start_offs, baked_play_rate))
+            end
+            local first_loop_src = actual_src_len - (start_offs % actual_src_len)
+            if math.abs(first_loop_src - actual_src_len) < 0.001 then first_loop_src = 0 end
+            
+            local t = first_loop_src / baked_play_rate
+            while t < item_len - 0.010 do
+                if t > 0.010 then
+                    -- Insert safe boundary markers before loop points.
+                    local safe_t = t - 0.005
+                    local boundary_src = start_offs + (safe_t * baked_play_rate)
+                    if DEBUG_MODE then
+                        dbg(string.format("  -> Adding safe loop boundary marker at pos: %.4f, src: %.4f", safe_t, boundary_src))
+                    end
+                    reaper.SetTakeStretchMarker(take, -1, safe_t, boundary_src)
+                end
+                t = t + (actual_src_len / baked_play_rate)
+            end
+        end
+
         GrooveCache:clear(take)
     end
 
-    -- Ensure Start/End Markers for Loop Stability
+    -- Insert start/end markers with offset to maintain loop stability.
     local has_start_marker = false
     local has_end_marker = false
     num_markers = reaper.GetTakeNumStretchMarkers(take)
 
     if num_markers > 0 then
         local _, first_pos, _ = reaper.GetTakeStretchMarker(take, 0)
-        if math.abs(first_pos) < 0.001 then has_start_marker = true end
+        if first_pos <= 0.010 then has_start_marker = true end
 
         local _, last_pos, _ = reaper.GetTakeStretchMarker(take, num_markers - 1)
-        if math.abs(last_pos - item_len) < 0.001 then has_end_marker = true end
+        if last_pos >= item_len - 0.010 then has_end_marker = true end
     end
 
     local markers_updated = false
     if not has_start_marker then
-        reaper.SetTakeStretchMarker(take, -1, 0.0, start_offs)
+        reaper.SetTakeStretchMarker(take, -1, 0.005, start_offs + (0.005 * baked_play_rate))
         markers_updated = true
+        if DEBUG_MODE then dbg("  -> Adding safe start marker at pos 0.005") end
     end
 
     if not has_end_marker then
-        local end_src_pos = start_offs + (item_len * play_rate)
-        if num_markers > 0 then
-            local _, last_pos, last_src = reaper.GetTakeStretchMarker(take, num_markers - 1)
-            if last_pos < item_len then
-                end_src_pos = last_src + (item_len - last_pos) * play_rate
+        local end_pos = item_len - 0.005
+        if end_pos > 0.010 then
+            local end_src_pos = start_offs + (end_pos * baked_play_rate)
+            if num_markers > 0 then
+                local _, last_pos, last_src = reaper.GetTakeStretchMarker(take, num_markers - 1)
+                if last_pos < end_pos then
+                    end_src_pos = last_src + (end_pos - last_pos) * baked_play_rate
+                end
             end
+            reaper.SetTakeStretchMarker(take, -1, end_pos, end_src_pos)
+            markers_updated = true
+            if DEBUG_MODE then dbg(string.format("  -> Adding safe end marker at pos %.4f, src %.4f", end_pos, end_src_pos)) end
         end
-        reaper.SetTakeStretchMarker(take, -1, item_len, end_src_pos)
-        markers_updated = true
     end
 
     if markers_updated then
@@ -1743,26 +1956,41 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
     if self.application.audio_apply_volume then
         env = reaper.GetTakeEnvelopeByName(take, "Volume")
         if not env then
-            reaper.Main_OnCommand(40693, 0)
+            -- Cache item selection state.
+            local sel_items = {}
+            for i = 0, reaper.CountSelectedMediaItems(0) - 1 do
+                sel_items[#sel_items+1] = reaper.GetSelectedMediaItem(0, i)
+            end
+            
+            reaper.Main_OnCommand(40289, 0) -- Unselect all items.
+            reaper.SetMediaItemSelected(item, true)
+            reaper.Main_OnCommand(40693, 0) -- Toggle take volume envelope.
+            
+            -- Restore selection
+            reaper.Main_OnCommand(40289, 0)
+            for _, sel_item in ipairs(sel_items) do
+                reaper.SetMediaItemSelected(sel_item, true)
+            end
+            
             env = reaper.GetTakeEnvelopeByName(take, "Volume")
         end
 
         if env then
-            env_mode = reaper.GetEnvelopeScalingMode(env)
-            scaled_unity = reaper.ScaleToEnvelopeMode(env_mode, 1.0)
+        env_mode = reaper.GetEnvelopeScalingMode(env)
+        scaled_unity = reaper.ScaleToEnvelopeMode(env_mode, 1.0)
 
-            local source_start = start_offs
-            local source_end = start_offs + (item_len * play_rate)
-            reaper.DeleteEnvelopePointRange(env, source_start - 0.1, source_end + 0.1)
-            reaper.InsertEnvelopePoint(env, source_start, scaled_unity, 0, 0, false, true)
-            reaper.InsertEnvelopePoint(env, source_end, scaled_unity, 0, 0, false, true)
-        end
+        local source_start = start_offs
+        local source_end = start_offs + (item_len * baked_play_rate)
+        reaper.DeleteEnvelopePointRange(env, source_start - 0.1, source_end + 0.1)
+        reaper.InsertEnvelopePoint(env, source_start, scaled_unity, 0, 0, false, true)
+        reaper.InsertEnvelopePoint(env, source_end, scaled_unity, 0, 0, false, true)
+    end
     end
 
     if DEBUG_MODE then
         dbg("--- AUDIO GROOVE APPLICATION START ---")
         dbg(string.format("ItemPos: %.3fs | ItemLen: %.3fs", item_pos, item_len))
-        dbg(string.format("TakeOffset: %.3fs | PlayRate: %.3f", start_offs, play_rate))
+        dbg(string.format("TakeOffset: %.3fs | BakedRate: %.3f", start_offs, baked_play_rate))
     end
 
     num_markers = reaper.GetTakeNumStretchMarkers(take)
@@ -1794,15 +2022,17 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
 
     local marker_idx_offset = 0
     local last_new_pos = -0.001
+    
+    local out_info = { markers = {} }
 
     for i, m in ipairs(markers) do
         local current_abs_time = item_pos + m.orig_pos
         local abs_qn = reaper.TimeMap2_timeToQN(0, current_abs_time)
 
         local grid_division = self.application.target_grid
-        if grid_division <= 0 then grid_division = 0.125 end
+        if grid_division <= 0 then grid_division = groove.grid_base or 0.125 end
 
-        local query_qn = math.floor(abs_qn / grid_division + 0.5) * grid_division
+        local query_qn, _ = GetHeuristicGridPos(abs_qn, grid_division)
 
         local delta = 0
         local is_grouped = false
@@ -1815,14 +2045,46 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
 
         local time_dist = math.abs(current_abs_time - last_abs_time)
 
-        -- Pinned edge markers
-    
+        -- Preserve pinned edge markers and loop boundaries.
+        local is_pinned = false
         if m.orig_pos < 0.030 or math.abs(m.orig_pos - item_len) < 0.030 then
+            is_pinned = true
+        end
+        if not is_pinned and actual_src_len then
+            local src_rem = m.src_pos % actual_src_len
+            if src_rem < 0.030 or src_rem > actual_src_len - 0.030 then
+                is_pinned = true
+            end
+        end
+
+        if is_pinned then
             delta = 0
             is_grouped = true
             gp = nil
             last_query_qn = query_qn
             last_delta = 0
+            if DEBUG_MODE then dbg(string.format("  -> Marker %d PINNED (delta=0)", m.index)) end
+        elseif master_audio_info and master_audio_info.markers then
+            local closest_m = nil
+            local min_dist = 9999
+            for _, mm in ipairs(master_audio_info.markers) do
+                local dist = math.abs(mm.abs_time - current_abs_time)
+                if dist < min_dist then
+                    min_dist = dist
+                    closest_m = mm
+                end
+            end
+            
+            if closest_m and min_dist < 0.050 then
+                delta = closest_m.delta
+                is_grouped = false
+                if closest_m.gp_velocity then
+                    gp = { velocity = closest_m.gp_velocity }
+                end
+            else
+                delta = 0
+                is_grouped = true
+            end
         elseif math.abs(query_qn - last_query_qn) < 0.001 and time_dist < lockout_sec then
             delta = last_delta
             is_grouped = true
@@ -1853,6 +2115,12 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
         end
 
         last_abs_time = current_abs_time
+        
+        table.insert(out_info.markers, {
+            abs_time = current_abs_time,
+            delta = delta,
+            gp_velocity = gp and gp.velocity or nil
+        })
 
         local vel_factor = 0
 
@@ -1871,14 +2139,29 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
             local strength = self.application.timing_amount * self.application.global_intensity
             local new_pos = m.orig_pos + (delta * strength)
 
-            
+
             if not is_grouped or delta ~= 0 then
                 local min_pos = last_new_pos + 0.001
                 local max_pos = item_len - 0.001
 
                 if i < #markers then
-                    
                     max_pos = markers[i + 1].orig_pos - 0.001
+                end
+
+                -- Clamp marker positions to avoid item boundaries.
+                if new_pos < 0.010 then new_pos = 0.010 end
+                if new_pos > item_len - 0.010 then new_pos = item_len - 0.010 end
+                
+                if actual_src_len then
+                    -- Calculate next loop boundary.
+                    local current_src_offset = start_offs + (m.orig_pos * baked_play_rate)
+                    local loops_passed = math.floor(current_src_offset / actual_src_len)
+                    local next_loop_src = (loops_passed + 1) * actual_src_len
+                    local next_loop_pos = (next_loop_src - start_offs) / baked_play_rate
+                    
+                    if next_loop_pos < item_len and next_loop_pos > new_pos then
+                        if new_pos > next_loop_pos - 0.010 then new_pos = next_loop_pos - 0.010 end
+                    end
                 end
 
                 if new_pos < min_pos then new_pos = min_pos end
@@ -1907,7 +2190,7 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
                 end
 
                 if protect_time > 0.002 then
-                    local anchor_src = m.src_pos + protect_time
+                    local anchor_src = m.src_pos + (protect_time * baked_play_rate)
                     local anchor_pos = new_pos + protect_time
                     reaper.SetTakeStretchMarker(take, -1, anchor_pos, anchor_src)
                     marker_idx_offset = marker_idx_offset + 1
@@ -1924,7 +2207,7 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
                     local amp = 10 ^ (gain_db / 20)
                     local scaled_amp = reaper.ScaleToEnvelopeMode(env_mode, amp)
 
-                    local env_time_center = start_offs + (new_pos * play_rate)
+                    local env_time_center = start_offs + (new_pos * baked_play_rate)
 
                     local pre_s = self.application.audio_pre_ms / 1000
                     local post_s = self.application.audio_post_ms / 1000
@@ -1941,7 +2224,7 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
     if env then reaper.Envelope_SortPoints(env) end
     reaper.UpdateItemInProject(item)
     reaper.UpdateArrange()
-    return true
+    return true, nil, out_info
 end
 
 function GrooveCore:applyGroove()
@@ -1961,6 +2244,8 @@ function GrooveCore:applyGroove()
     local first_error = nil
     local fail_reasons = {}
 
+    local masters = {} -- Map of time segments to master_audio_infos.
+
     for i = 0, selected_count - 1 do
         local item = reaper.GetSelectedMediaItem(0, i)
         if item then
@@ -1974,25 +2259,36 @@ function GrooveCore:applyGroove()
                 if not first_error then first_error = reason end
             else
                 local item_pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+                local item_len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
                 local t_ctx = TimeContext.new(item, take)
                 local virtual_start_time = t_ctx:getVirtualStartTime()
                 local start_qn = t_ctx:getVirtualStartQN()
 
-                if DEBUG_MODE then
-                    dbg(string.format("[OFFSET] ItemPos: %.3f | Offs: %.3f | Rate: %.3f", t_ctx.item_pos, t_ctx.start_offs,
-                        t_ctx.play_rate))
-                    dbg(string.format("[OFFSET] VirtStartT: %.3f | VirtStartQN: %.3f", virtual_start_time, start_qn))
+                local current_master = nil
+                if self.application.phase_coherent then
+                    for _, m in ipairs(masters) do
+                        local overlap = math.max(0, math.min(item_pos + item_len, m.item_pos + m.item_len) - math.max(item_pos, m.item_pos))
+                        if overlap > 0.050 then -- at least 50ms overlap
+                            current_master = m
+                            break
+                        end
+                    end
                 end
 
-                local ok_apply, err_apply
+                local ok_apply, err_apply, out_info
                 if reaper.TakeIsMIDI(take) then
                     ok_apply, err_apply = self:_applyToMIDI(take, groove, start_qn, item_pos)
                 else
-                    local item_len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
                     local start_offs = reaper.GetMediaItemTakeInfo_Value(take, "D_STARTOFFS")
                     local play_rate = reaper.GetMediaItemTakeInfo_Value(take, "D_PLAYRATE")
-                    ok_apply, err_apply = self:_applyToAudio(take, item, groove, start_qn, item_pos, item_len, start_offs,
-                        play_rate)
+                    ok_apply, err_apply, out_info = self:_applyToAudio(take, item, groove, start_qn, item_pos, item_len, start_offs,
+                        play_rate, current_master)
+                        
+                    if ok_apply and self.application.phase_coherent and not current_master and out_info then
+                        out_info.item_pos = item_pos
+                        out_info.item_len = item_len
+                        table.insert(masters, out_info)
+                    end
                 end
 
                 if ok_apply then
@@ -2090,19 +2386,20 @@ local function DrawHelpModal()
                 reaper.ImGui_Text(ctx, 'GROOVE APPLICATION')
                 reaper.ImGui_BulletText(ctx,
                     'Target Selection: Select the target items you want to quantize (Audio or MIDI).')
-                reaper.ImGui_BulletText(ctx, 'Grid: Sets the reference grid for quantization and filtering.')
                 reaper.ImGui_BulletText(ctx,
-                    'Strength: Controls how strongly the timing matches the groove (0% to 100%).')
+                    'Timing Strength: Controls how strongly the timing matches the groove (0% to 100%).')
                 reaper.ImGui_BulletText(ctx,
-                    'Velocity (Vel): Scales the velocity of MIDI notes to match the groove dynamics.')
+                    'Velocity Strength: Scales the velocity of MIDI notes or Audio Envelopes to match the groove dynamics.')
                 reaper.ImGui_BulletText(ctx,
-                    'Quantize: Pre-quantizes items to the selected Grid before applying groove offset.')
+                    'Grid Attraction: Pre-quantizes items to the selected Grid before applying groove offset.')
                 reaper.ImGui_BulletText(ctx,
                     'Match Window: Max time distance (ms) to link source notes to grid/groove points.')
                 reaper.ImGui_BulletText(ctx,
                     'Target Filter: Apply groove only to notes near specific grid lines (e.g., 1/4 for kicks only).')
                 reaper.ImGui_BulletText(ctx,
-                    'Shape (Audio): Choose the transient preservation shape (e.g., Hard, Soft) for audio processing.')
+                    'Phase Coherent Mode: When applying to multi-track audio, uses the first selected item as the Master to preserve phase.')
+                reaper.ImGui_BulletText(ctx,
+                    'Audio Velocity Settings: Create volume envelopes dynamically shaped around transients.')
                 reaper.ImGui_BulletText(ctx,
                     'Apply: Click "Apply Groove" to process all selected target items. This action is undoable.')
                 reaper.ImGui_Spacing(ctx)
@@ -2114,19 +2411,22 @@ local function DrawHelpModal()
                 reaper.ImGui_BulletText(ctx,
                     'LOCKED (Groove): Shows the stored pattern of the selected groove from the pool.')
                 reaper.ImGui_Unindent(ctx)
-                reaper.ImGui_BulletText(ctx, 'LP Override: When LP is enabled, visualizer shows synthetic generator preview.')
-                reaper.ImGui_BulletText(ctx, 'Navigation: Wheel = Zoom, Shift+Wheel = Scroll.')
                 reaper.ImGui_BulletText(ctx,
-                    'Feedback: Green lines = Transients/Notes. Yellow lines = Active Groove Pattern.')
+                    'LP Override: When LP is enabled, visualizer shows synthetic generator preview.')
+                reaper.ImGui_BulletText(ctx, 'Navigation: Wheel = Zoom, Right-Click Drag = Scroll.')
+                reaper.ImGui_BulletText(ctx,
+                    'Feedback: Green lines = Transients/Notes. Blue lines = Active Groove Pattern.')
                 reaper.ImGui_Spacing(ctx)
 
                 reaper.ImGui_Text(ctx, 'GROOVE GENERATOR')
-                reaper.ImGui_BulletText(ctx, 'Synthetic Grooves: Create perfect swing patterns without audio analysis.')
+                reaper.ImGui_BulletText(ctx, 'Procedural Grooves: Create perfect swing patterns without audio analysis.')
                 reaper.ImGui_BulletText(ctx, 'Grid: Select the base resolution (e.g., 1/16).')
                 reaper.ImGui_BulletText(ctx, 'Swing: Adjust the swing amount (50% = straight, 66% = triplet feel).')
-                reaper.ImGui_BulletText(ctx, 'Shortcuts: Right-click the Swing slider to reset to default (57%).')
+                reaper.ImGui_BulletText(ctx, 'Push/Pull: Shift the entire groove ahead of or behind the exact beat.')
+                reaper.ImGui_BulletText(ctx, 'Velocity Curve: Apply hierarchical musical dynamics (accents on downbeats).')
+                reaper.ImGui_BulletText(ctx, 'Shortcuts: Right-click sliders to reset to defaults.')
                 reaper.ImGui_BulletText(ctx,
-                    'LP: Real-time preview of synthetic swing. It is independent from the selected groove.')
+                    'LP: Real-time preview of synthetic groove. It is independent from the selected groove.')
                 reaper.ImGui_BulletText(ctx, 'Generate: Adds the generated pattern to the Groove Pool.')
                 reaper.ImGui_Spacing(ctx)
 
@@ -2175,7 +2475,7 @@ local function DrawMainToolbar()
         local has_selection = reaper.GetSelectedMediaItem(0, 0) ~= nil
         local has_groove = GrooveCore:getCurrentGroove() ~= nil
 
-        
+
         reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_FramePadding(), 10, 0)
 
         if reaper.ImGui_Button(ctx, "Extract from Sel", 0, btn_h) then
@@ -2213,7 +2513,7 @@ local function DrawMainToolbar()
         reaper.ImGui_EndChild(ctx)
     end
 
-    reaper.ImGui_PopStyleColor(ctx) 
+    reaper.ImGui_PopStyleColor(ctx)
 
     reaper.ImGui_Separator(ctx)
 end
@@ -2237,67 +2537,23 @@ local function UpdatePreviewCache(take)
     local len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
     local pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
     local _, guid = reaper.GetSetMediaItemTakeInfo_String(take, "GUID", "", false)
-    local id = guid .. "_" .. len .. "_" .. pos
+    
+    local ext = GrooveCore.extraction
+    local id = string.format("%s_%.3f_%.3f_%.2f_%.2f_%.0f_%.0f", 
+        guid, len, pos, ext.threshold_db or -30, ext.sensitivity or 0.5, ext.hpf_hz or 0, ext.lpf_hz or 0)
 
     if PreviewCache.id == id then return end
 
     PreviewCache.id = id
     PreviewCache.candidates = {}
 
-    local accessor = reaper.CreateTakeAudioAccessor(take)
-    local src = reaper.GetMediaItemTake_Source(take)
-    local samplerate = reaper.GetMediaSourceSampleRate(src)
-    if samplerate == 0 then samplerate = 44100 end
-    local channels = reaper.GetMediaSourceNumChannels(src)
-    local buffer_size = 4096
-    local buffer = reaper.new_array(buffer_size * channels)
-
-    local threshold_db = -60.0
-    local threshold_lin = 10 ^ (threshold_db / 20)
-
-    local analyze_len = len
-    if analyze_len > 30.0 then analyze_len = 30.0 end
-
-    local total_samples = math.floor(analyze_len * samplerate)
-    local sample_pos = 0
-    local prev_val = 0
-
-    while sample_pos < total_samples do
-        local chunk_size = math.min(buffer_size, total_samples - sample_pos)
-        if chunk_size <= 0 then break end
-
-        local rv = reaper.GetAudioAccessorSamples(accessor, samplerate, channels, sample_pos / samplerate, chunk_size,
-            buffer)
-        if not rv then break end
-
-        local i = 1
-        while i <= chunk_size do
-            local abs_val = 0
-            for c = 1, channels do
-                local val = buffer[(i - 1) * channels + c]
-                if val then abs_val = abs_val + math.abs(val) end
-            end
-            abs_val = abs_val / channels
-
-            local diff = abs_val - prev_val
-            if diff > threshold_lin then
-                local current_abs_sample = sample_pos + i
-                local time_in_item = current_abs_sample / samplerate
-
-                local last = PreviewCache.candidates[#PreviewCache.candidates]
-                if not last or (time_in_item - last.t > 0.005) then
-                    table.insert(PreviewCache.candidates, { t = time_in_item, v = diff })
-                elseif last and diff > last.v then
-                    last.t = time_in_item
-                    last.v = diff
-                end
-            end
-            prev_val = abs_val
-            i = i + 1
-        end
-        sample_pos = sample_pos + chunk_size
+    -- Limit extraction preview to 30.0s to prevent UI thread blocking.
+    local transients = GrooveCore:detectTransients(take, 30.0)
+    
+    for _, t in ipairs(transients) do
+        local time_in_item = t.time - pos
+        table.insert(PreviewCache.candidates, { t = time_in_item, v = t.val })
     end
-    reaper.DestroyAudioAccessor(accessor)
 end
 
 local function UpdateMidiPreviewCache(take)
@@ -2417,9 +2673,9 @@ local function DrawVisualizer(w, h)
     local draw_list = reaper.ImGui_GetWindowDrawList(State.ui.ctx)
     local p_x, p_y = reaper.ImGui_GetCursorScreenPos(State.ui.ctx)
 
-    reaper.ImGui_DrawList_AddRectFilled(draw_list, p_x, p_y, p_x + w, p_y + h, 0x00000044, uiScale(4))
+    reaper.ImGui_DrawList_AddRectFilled(draw_list, p_x, p_y, p_x + w, p_y + h, 0x1a1a20FF, uiScale(4))
 
-    local grid_col = 0xFFFFFF08 
+    local grid_col = 0xFFFFFF08
     local num_grid_lines = 8
     for i = 1, num_grid_lines do
         local x = p_x + (i / (num_grid_lines + 1)) * w
@@ -2509,7 +2765,8 @@ local function DrawVisualizer(w, h)
     end
 
     local is_viz_blocked = viz_block_reason ~= nil
-    local has_viz_data = target_take and not is_viz_blocked and VizCache.peaks and #VizCache.peaks > 0 and VizCache.len > 0
+    local has_viz_data = target_take and not is_viz_blocked and VizCache.peaks and #VizCache.peaks > 0 and
+        VizCache.len > 0
     local has_midi_data = target_take and not is_viz_blocked and VizCache.is_midi and VizCache.midi_points and
         #VizCache.midi_points > 0
 
@@ -2543,7 +2800,7 @@ local function DrawVisualizer(w, h)
         local base_y = p_y + h
         local scale_x = w / (VizCache.w or w)
 
-        local fill_col = (col_norm & 0xFFFFFF00) | 0x66 
+        local fill_col = (col_norm & 0xFFFFFF00) | 0x66
 
         for i = 1, #VizCache.peaks do
             local v = VizCache.peaks[i]
@@ -2586,11 +2843,9 @@ local function DrawVisualizer(w, h)
 
         for _, cand in ipairs(PreviewCache.candidates) do
             if cand.t >= v_start and cand.t <= v_end then
-                if cand.v > thresh_lin and cand.t > last_t + lockout then
-                    local x = MapTimeToX(cand.t)
-                    reaper.ImGui_DrawList_AddLine(draw_list, x, p_y, x, p_y + h, col_preview, 1.5)
-                    last_t = cand.t
-                end
+                -- PreviewCache candidates are pre-validated by detectTransients.
+                local x = MapTimeToX(cand.t)
+                reaper.ImGui_DrawList_AddLine(draw_list, x, p_y, x, p_y + h, col_preview, 1.5)
             end
         end
 
@@ -2647,7 +2902,7 @@ local function DrawVisualizer(w, h)
         local g = GrooveCore:getCurrentGroove()
 
         if State.runtime.gen_preview then
-            g = GrooveCore:generateSwingGroove(State.runtime.gen_grid_val or 0.25, State.runtime.gen_swing or 0.57, true)
+            g = GrooveCore:generateSwingGroove(State.runtime.gen_grid_val or 0.25, State.runtime.gen_swing or 0.57, State.runtime.gen_push_pull, State.runtime.gen_dynamics, true)
         end
 
         if g then
@@ -2706,24 +2961,8 @@ local function DrawVisualizer(w, h)
                 local loop_len = g.length_beats
                 if loop_len <= 0 then loop_len = 4 end
 
-                local use_swing_preview = false
-                local preview_swing = State.runtime.gen_swing or 0.57
-                local preview_grid = State.runtime.gen_grid_val or 0.25
-
-                if g.source_type == "GENERATED" and g.grid_base and math.abs(g.grid_base - preview_grid) < 0.001 then
-                    use_swing_preview = true
-                end
-
                 for _, p in ipairs(g.points) do
                     local pos_qn = p.pos_qn
-
-                    if use_swing_preview then
-                        local step = preview_grid
-                        local index = math.floor(pos_qn / step + 0.5)
-                        local offset = 0
-                        if index % 2 == 1 then offset = step * (2 * preview_swing - 1) end
-                        pos_qn = (index * step) + offset
-                    end
 
                     local x = (pos_qn % loop_len) / loop_len * w
                     reaper.ImGui_DrawList_AddLine(draw_list, p_x + x, p_y, p_x + x, p_y + h, 0xFFFFFF33, 1)
@@ -2741,13 +2980,21 @@ local function DrawVisualizer(w, h)
                         local visual_x = x + offset_px
 
                         local color = SPECIAL_COLORS.accent
+                        -- For generated grooves, visualize velocity dynamically
+                        local vel_alpha = math.floor((p.velocity or 1.0) * 255)
+                        if g.source_type == "GENERATED" then
+                            color = (SPECIAL_COLORS.accent & 0xFFFFFF00) | vel_alpha
+                        end
+
                         if (p.vel_delta or 0) > 20 then color = SPECIAL_COLORS.warn end
                         if (p.vel_delta or 0) < -20 then color = 0x55AAAAFF end
 
                         reaper.ImGui_DrawList_AddLine(draw_list, p_x + visual_x, p_y + uiScale(10), p_x + visual_x,
                             p_y + h - uiScale(10), color, uiScale(2))
                         local radius = uiScale(3)
-                        if p.vel_delta then
+                        if g.source_type == "GENERATED" then
+                            radius = radius * (p.velocity or 1.0)
+                        elseif p.vel_delta then
                             radius = math.max(uiScale(1.5),
                                 math.min(uiScale(8), radius + (p.vel_delta / 25)))
                         end
@@ -2758,7 +3005,7 @@ local function DrawVisualizer(w, h)
                 end
             end
         else
-            local txt = "Drag Audio Here or Select Item"
+            local txt = "Select Item"
 
             if State.ui.viz_locked then
                 txt = "Groove Locked (Select Donor)"
@@ -2882,8 +3129,24 @@ local function DrawGeneratorPanel()
         rv = true
     end
 
+    if not State.runtime.gen_push_pull then State.runtime.gen_push_pull = 0.0 end
+    local pp_int = math.floor(State.runtime.gen_push_pull * 100 + 0.5)
+    local rv_pp, new_pp_int = reaper.ImGui_SliderInt(State.ui.ctx, "Push/Pull ##gen", pp_int, -25, 25, "%d%%")
+    if rv_pp then State.runtime.gen_push_pull = new_pp_int / 100 end
+    if reaper.ImGui_IsItemHovered(State.ui.ctx) and reaper.ImGui_IsMouseClicked(State.ui.ctx, reaper.ImGui_MouseButton_Right()) then
+        State.runtime.gen_push_pull = 0.0
+    end
+
+    if not State.runtime.gen_dynamics then State.runtime.gen_dynamics = 0.0 end
+    local dyn_int = math.floor(State.runtime.gen_dynamics * 100 + 0.5)
+    local rv_dyn, new_dyn_int = reaper.ImGui_SliderInt(State.ui.ctx, "Velocity Curve ##gen", dyn_int, 0, 100, "%d%%")
+    if rv_dyn then State.runtime.gen_dynamics = new_dyn_int / 100 end
+    if reaper.ImGui_IsItemHovered(State.ui.ctx) and reaper.ImGui_IsMouseClicked(State.ui.ctx, reaper.ImGui_MouseButton_Right()) then
+        State.runtime.gen_dynamics = 0.0
+    end
+
     if reaper.ImGui_Button(State.ui.ctx, "Generate Swing") then
-        GrooveCore:generateSwingGroove(State.runtime.gen_grid_val, State.runtime.gen_swing)
+        GrooveCore:generateSwingGroove(State.runtime.gen_grid_val, State.runtime.gen_swing, State.runtime.gen_push_pull, State.runtime.gen_dynamics)
         statusSet("Generated Swing Groove", "ok")
     end
     reaper.ImGui_SameLine(State.ui.ctx)
@@ -2927,6 +3190,8 @@ local function DrawGroovePoolPanel()
     if reaper.ImGui_IsItemHovered(State.ui.ctx) then
         reaper.ImGui_SetTooltip(State.ui.ctx, "Create new Bank folder")
     end
+    
+
 
     local center = { reaper.ImGui_Viewport_GetCenter(reaper.ImGui_GetMainViewport(State.ui.ctx)) }
     reaper.ImGui_SetNextWindowPos(State.ui.ctx, center[1], center[2], reaper.ImGui_Cond_Appearing(), 0.5, 0.5)
@@ -2970,6 +3235,27 @@ local function DrawGroovePoolPanel()
                 if reaper.ImGui_Selectable(State.ui.ctx, "[+]  " .. b, false) then
                     GrooveCore.current_bank = b
                     GrooveCore:loadGroovesFromDisk()
+                end
+                
+                if reaper.ImGui_BeginPopupContextItem(State.ui.ctx) then
+                    if reaper.ImGui_MenuItem(State.ui.ctx, "Delete Bank") then
+                        State.runtime.pending_bank_delete = b
+                        if GrooveCore.current_bank == b then
+                            GrooveCore.current_bank = nil
+                            GrooveCore.pool = {}
+                            GrooveCore.selected_indices = {}
+                            GrooveCore.current_groove_index = nil
+                            GrooveCore.last_clicked_index = nil
+                        end
+                        for idx = #GrooveCore.banks, 1, -1 do
+                            if GrooveCore.banks[idx] == b then
+                                table.remove(GrooveCore.banks, idx)
+                                break
+                            end
+                        end
+                        statusSet("Deleting bank: " .. tostring(b), "info")
+                    end
+                    reaper.ImGui_EndPopup(State.ui.ctx)
                 end
             end
         end
@@ -3261,7 +3547,8 @@ local function DrawExtractionSettingsSection(current_groove)
             reaper.ImGui_EndCombo(State.ui.ctx)
         end
         if reaper.ImGui_IsItemHovered(State.ui.ctx) then
-            reaper.ImGui_SetTooltip(State.ui.ctx, "Low-pass the detector to reduce hats/highs and focus low-mid transients.")
+            reaper.ImGui_SetTooltip(State.ui.ctx,
+                "Low-pass the detector to reduce hats/highs and focus low-mid transients.")
         end
     end
 
@@ -3310,7 +3597,7 @@ local function DrawApplyAndRestoreButtons(current_groove, backup_state)
     local apply_w = avail_w - reset_w - spacing
     local btn_h = uiScale(30)
 
-    local col_normal = 0x2E2E2EFF
+    local col_normal = 0x26262dFF
     local col_hover = 0x5AA09BFF
     local col_active = 0x4A8580FF
 
@@ -3484,6 +3771,13 @@ local function DrawInjectorSection(current_groove)
         rv = true
     end
 
+    rv, GrooveCore.application.phase_coherent = reaper.ImGui_Checkbox(State.ui.ctx,
+        "Phase Coherent Mode", GrooveCore.application.phase_coherent)
+    if reaper.ImGui_IsItemHovered(State.ui.ctx) then
+        reaper.ImGui_SetTooltip(State.ui.ctx,
+            "When applying to multiple audio items, uses the first selected item as the Master Guide. All other items will receive identical timing shifts to preserve phase.")
+    end
+
     reaper.ImGui_Spacing(State.ui.ctx)
 
     local current_filter_label = "All"
@@ -3629,24 +3923,7 @@ local function DrawStatusBar()
 end
 
 local function CreateUIFont()
-    local os_name = string.lower(reaper.GetOS() or "")
-    local candidates
-
-    if os_name:find("win") then
-        candidates = { "Segoe UI", "Arial", "sans-serif" }
-    elseif os_name:find("osx") or os_name:find("mac") then
-        candidates = { "SF Pro Text", "Helvetica Neue", "Helvetica", "Arial", "sans-serif" }
-    else
-        candidates = { "Noto Sans", "DejaVu Sans", "Liberation Sans", "Arial", "sans-serif" }
-    end
-
-    for _, font_name in ipairs(candidates) do
-        local font = reaper.ImGui_CreateFont(font_name, UI_CONST.FONT_SIZE)
-        if font then
-            return font
-        end
-    end
-
+    -- Map 'sans-serif' to OS default UI font.
     return reaper.ImGui_CreateFont("sans-serif", UI_CONST.FONT_SIZE)
 end
 
@@ -3655,6 +3932,19 @@ local function Loop()
         State.ui.font = CreateUIFont()
         reaper.ImGui_Attach(State.ui.ctx, State.ui.font)
     end
+
+    if State.runtime.pending_bank_delete then
+        local name = State.runtime.pending_bank_delete
+        State.runtime.pending_bank_delete = nil
+        local ok, err = GrooveCore:deleteBank(name)
+        GrooveCore:loadGroovesFromDisk()
+        if ok then
+            statusSet("Bank deleted: " .. tostring(name), "ok")
+        else
+            statusSet("Failed to delete bank: " .. tostring(err or "unknown"), "error")
+        end
+    end
+
     local window_flags = 0
     if reaper.ImGui_ConfigVar_Flags then window_flags = window_flags | reaper.ImGui_WindowFlags_NoCollapse() end
 
@@ -3680,7 +3970,7 @@ end
 local function Init()
     local dbg = reaper.GetExtState(EXT_NS, "debug_mode")
     if dbg == "1" then State.settings.debug_mode = true end
-    
+
     -- Sync global DEBUG_MODE
     if DEBUG_MODE then State.settings.debug_mode = true end
     if State.settings.debug_mode then DEBUG_MODE = true end

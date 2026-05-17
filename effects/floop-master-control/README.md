@@ -1,6 +1,6 @@
 # Floop Master Control
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.2.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.3.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 **Integrated master monitoring and analysis for REAPER.**
 
@@ -12,19 +12,19 @@ It includes True Peak limiting/metering, LUFS metering, Spectrum Analysis, and P
 
 ## Screenshots
 
-<p align="center"> 
- <br> 
- <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s1-v1.0.0.png" target="_blank"> 
-   <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s1-v1.0.0.png" width="350" alt="click to zoom in"> 
- </a> 
- <br> 
+<p align="center">
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s2-v1.0.0.png" target="_blank">
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s2-v1.0.0.png" height="240" alt="Screenshot 2">
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s1-v1.0.0.png" target="_blank">
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s1-v1.0.0.png" height="240" alt="Screenshot 1">
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s3-v1.0.0.png" target="_blank">
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s3-v1.0.0.png" height="240" alt="Screenshot 3">
+  </a>
 </p>
-<details>
-  <summary>📸 Click to view more screenshots</summary>
-  <p align="center">
-  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s2-v1.0.0.png" target="_blank"><img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s2-v1.0.0.png" height="350"></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s3-v1.0.0.png" target="_blank"><img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-master-control-s3-v1.0.0.png" height="350"></a> 
-  </p>
-</details>
 
 
 
@@ -105,6 +105,12 @@ To see the meters directly in the mixer without opening the window:
 
 ## Changelog
 
+### v1.3.0
+*   **Performance Optimization**: Reduced CPU and RAM footprint by removing redundant LUFS memory arrays and implementing an efficient ring buffer for True Peak sinc interpolation.
+*   **DSP Fixes**: Corrected Goniometer horizontal axis mapping (L/R inversion) and improved Multi-band Phase Correlation math to prevent background noise from polluting phase readings.
+*   **Metering Refinements**: Stabilized Phase correlation readings for sub-bass frequencies (300ms window) and extended the LUFS visual scale down to -72 LUFS for full EBU +18 compliance.
+*   **Lossless GUI**: Re-engineered Goniometer drawing routine to render every single audio sample processed between frames, ensuring zero missed transients regardless of UI frame rate.
+
 ### v1.2.0
 *   **Side Solo Fix**: Now correctly mutes Mid channel (L=Side, R=-Side) instead of playing phantom center mono.
 *   **Progressive Smoothing**: Converted Smoothing control to a continuous slider (1/3 to 1/24 oct). Includes right-click preset cycling.
@@ -121,6 +127,12 @@ To see the meters directly in the mixer without opening the window:
 
 ## Credits
 Inspired by A. Lunedì's master workflow
+
+## Support Development
+
+If you find my scripts useful and want to support their development, you can buy me a coffee on Ko-fi:
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-orange?style=flat-square&logo=ko-fi)](https://ko-fi.com/floopsreaperscripts)
 
 ## Author
 
