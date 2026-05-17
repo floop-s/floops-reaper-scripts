@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="cf42ea727ee883fda043e06c35976ce0f8a6a134">
+<index version="1" name="Floop's Reaper Scripts" commit="4083130d57c0f9f18c3c1348a7e57642e8fd9b2e">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -90,17 +90,17 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
 }
 ]]></description>
       </metadata>
-      <version name="1.0.0" author="Floop-s" time="2026-05-17T12:24:20Z">
-        <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/floop-master-control-mod.jsfx</source>
-        <source type="data" file="modules/mod_meter.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_meter.jsfx-inc</source>
-        <source type="data" file="modules/mod_spectrum.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_spectrum.jsfx-inc</source>
-        <source type="data" file="modules/mod_stereo.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_stereo.jsfx-inc</source>
-        <source type="data" file="modules/mod_phase.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_phase.jsfx-inc</source>
-        <source type="data" file="modules/mod_correlometer.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_correlometer.jsfx-inc</source>
-        <source type="data" file="modules/mod_oscilloscope.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_oscilloscope.jsfx-inc</source>
-        <source type="data" file="modules/mod_monitor.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_monitor.jsfx-inc</source>
-        <source type="data" file="modules/mod_vumeter.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_vumeter.jsfx-inc</source>
-        <source type="data" file="modules/mod_spectrogram.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-master-control-mod/modules/mod_spectrogram.jsfx-inc</source>
+      <version name="1.0.0" author="Floop-s" time="2026-05-17T13:29:32Z">
+        <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/4083130d57c0f9f18c3c1348a7e57642e8fd9b2e/effects/floop-master-control-mod/floop-master-control-mod.jsfx</source>
+        <source file="modules/mod_correlometer.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/4083130d57c0f9f18c3c1348a7e57642e8fd9b2e/effects/floop-master-control-mod/modules/mod_correlometer.jsfx-inc</source>
+        <source file="modules/mod_meter.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/4083130d57c0f9f18c3c1348a7e57642e8fd9b2e/effects/floop-master-control-mod/modules/mod_meter.jsfx-inc</source>
+        <source file="modules/mod_monitor.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/4083130d57c0f9f18c3c1348a7e57642e8fd9b2e/effects/floop-master-control-mod/modules/mod_monitor.jsfx-inc</source>
+        <source file="modules/mod_oscilloscope.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/4083130d57c0f9f18c3c1348a7e57642e8fd9b2e/effects/floop-master-control-mod/modules/mod_oscilloscope.jsfx-inc</source>
+        <source file="modules/mod_phase.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/4083130d57c0f9f18c3c1348a7e57642e8fd9b2e/effects/floop-master-control-mod/modules/mod_phase.jsfx-inc</source>
+        <source file="modules/mod_spectrogram.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/4083130d57c0f9f18c3c1348a7e57642e8fd9b2e/effects/floop-master-control-mod/modules/mod_spectrogram.jsfx-inc</source>
+        <source file="modules/mod_spectrum.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/4083130d57c0f9f18c3c1348a7e57642e8fd9b2e/effects/floop-master-control-mod/modules/mod_spectrum.jsfx-inc</source>
+        <source file="modules/mod_stereo.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/4083130d57c0f9f18c3c1348a7e57642e8fd9b2e/effects/floop-master-control-mod/modules/mod_stereo.jsfx-inc</source>
+        <source file="modules/mod_vumeter.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/4083130d57c0f9f18c3c1348a7e57642e8fd9b2e/effects/floop-master-control-mod/modules/mod_vumeter.jsfx-inc</source>
       </version>
     </reapack>
   </category>
