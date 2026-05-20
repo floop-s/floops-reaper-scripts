@@ -1,17 +1,13 @@
 -- Floop Scratchpad - Per-track notes system for REAPER.
 -- @description Floop Scratchpad: per-track notes system
--- @version 2.0.1
+-- @version 2.1.0
 -- @author Floop-s
 -- @license GPL-3.0
 -- @changelog
---   + V2.0.1: Massive update! No more background startup script needed.
---   + Added JSFX Background Color Picker.
---   + Added 'Migrate V1' button to safely import legacy .txt notes.
---   + Added dynamic UI Theme that matches REAPER's interface.
---   + Added Ctrl+S / Cmd+S keyboard shortcut for instant saving.
---   + Native text word-wrapping for JSFX and DPI/Retina support.
---   + Full rewrite using ProjExtState (no external files needed).
---   + Hotfix: UI layout adjustment for the Help modal text wrapping.
+--   + V2.1.0
+--   + Added workflow shortcuts to speed up saving/closing.
+--   + JSFX: Text luminance adapts (light/dark) based on background color.
+--   + Color Picker: Added saved color palette (5 slots).
 -- @about
 --   Per-track notes system for REAPER.
 --
@@ -41,7 +37,7 @@ if not reaper or not reaper.ImGui_CreateContext then
 end
 
 -- Context initialization
-local ctx = reaper.ImGui_CreateContext('Floop Scratchpad')
+local ctx = reaper.ImGui_CreateContext('Floop Scratchpad', reaper.ImGui_ConfigFlags_NavEnableKeyboard())
 
 if not ctx then
   reaper.ShowMessageBox("Failed to create ImGui context.\nPlease verify ReaImGui installation and compatibility.", "Error", 0)
@@ -222,6 +218,25 @@ local function unpack_argb(argb)
   return r, g, b, a
 end
 
+local function open_url(url)
+  if type(url) ~= "string" or url == "" then return false end
+  if reaper.CF_ShellExecute then
+    reaper.CF_ShellExecute(url)
+    return true
+  end
+  local os_name = reaper.GetOS() or ""
+  local cmd
+  if os_name:match("Win") then
+    cmd = 'cmd.exe /C start "" "' .. url .. '"'
+  elseif os_name:match("OSX") or os_name:match("macOS") then
+    cmd = 'open "' .. url .. '"'
+  else
+    cmd = 'xdg-open "' .. url .. '"'
+  end
+  reaper.ExecProcess(cmd, 0)
+  return true
+end
+
 -- Global state
 local noteText = ''
 local currentTrack = nil
@@ -236,6 +251,7 @@ local jsfxBgColorU32 = nil
 local showConfirmClear = false
 local lastProjectPath = nil
 local lastProjectPtr = nil
+local wasTextFocused = false
 
 local function log(msg)
 end
@@ -495,7 +511,7 @@ local function createStaticJSFXFile()
   reaper.RecursiveCreateDirectory(effectsDir, 0)
   
   local jsfxContent = [[desc:Floop Note Reader
-// @version 2.0.0
+// @version 2.1.0
 // @author Floop-s
 // @about Static JSFX reader for Floop Scratchpad. Uses gmem to receive notes and @serialize for auto-persistence.
 
@@ -644,7 +660,14 @@ strlen(#note_text) > 0 ? (
       );
     );
 
-  gfx_r = 0.31; gfx_g = 0.31; gfx_b = 0.30;
+  // Dynamic text color based on background luminance
+  luma = (0.299 * bg_r) + (0.587 * bg_g) + (0.114 * bg_b);
+  luma < 0.4 ? (
+    gfx_r = 0.95; gfx_g = 0.95; gfx_b = 0.95; // Light text
+  ) : (
+    gfx_r = 0.15; gfx_g = 0.15; gfx_b = 0.15; // Dark text
+  );
+  
   gfx_x = pad; gfx_y = pad;
   gfx_drawstr(#wrapped_text);
 ) : (
@@ -859,6 +882,43 @@ local function migrateLegacyTxtFile()
 end
 
 -- UI Functions
+local function performSave(track, text)
+  if not track or not isValidTrack(track) then return false, "No valid track selected" end
+  local trackGUID = getTrackGUID(track)
+  local success, info = saveNoteForTrack(trackGUID, text)
+  if success then
+    -- Update JSFX
+    local track_id = getTrackID(track)
+    local hasNotes = text and text:match('%S')
+    local fxCount = reaper.TrackFX_GetCount(track)
+    local hasJSFX = false
+    
+    if hasNotes then
+      writeNoteToGmem(track_id, text, jsfxFontScale, jsfxForceLarge, jsfxBgColor)
+    end
+    
+    for i = fxCount - 1, 0, -1 do
+      local _, fxName = reaper.TrackFX_GetFXName(track, i, '')
+      if fxName:find('FloopNoteReader') or fxName:find('Floop Note Reader') then
+        hasJSFX = true
+        if not hasNotes then
+          reaper.TrackFX_Delete(track, i)
+        else
+          reaper.TrackFX_SetParam(track, i, 0, track_id)
+          reaper.TrackFX_SetParam(track, i, 1, getProjectID())
+        end
+      end
+    end
+    
+    if hasNotes and not hasJSFX then
+       addJSFXToTrack(track, jsfxFontScale, jsfxForceLarge, jsfxBgColor)
+    end
+    isDirty = false
+    return true, "Note saved"
+  end
+  return false, info or "unknown error"
+end
+
 local function initializeUI()
   local proj, projPath = reaper.EnumProjects(-1)
   lastProjectPtr = proj
@@ -882,15 +942,13 @@ local function initializeUI()
 end
 
 local function renderUI()
+  local requestClose = false
   local newSelectedTrack = getSelectedTrack()
   if newSelectedTrack ~= currentTrack then
     if isDirty and isValidTrack(currentTrack) then
-      local trackGUID = getTrackGUID(currentTrack)
-      local success, info = saveNoteForTrack(trackGUID, noteText)
+      local success, info = performSave(currentTrack, noteText)
       if success then
         statusMsg = '✅ Note autosaved for track: ' .. getTrackName(currentTrack)
-        isDirty = false
-        refreshJSFXForTrack(currentTrack)
       else
         statusMsg = '❌ Autosave failed: ' .. (info or 'unknown')
       end
@@ -943,6 +1001,7 @@ local function renderUI()
   local textareaHeight = math.max(120, math.min(150, availHeight - 120)) 
   
   local changed, newText = reaper.ImGui_InputTextMultiline(ctx, '##note_textarea', noteText, textareaWidth, textareaHeight)
+  local isTextFocused = reaper.ImGui_IsItemActive(ctx)
   if changed then
     noteText = newText
     isDirty = true
@@ -968,15 +1027,11 @@ local function renderUI()
   
   if reaper.ImGui_IsItemDeactivatedAfterEdit and reaper.ImGui_IsItemDeactivatedAfterEdit(ctx) then
     if currentTrack and isValidTrack(currentTrack) then
-      local trackGUID = getTrackGUID(currentTrack)
-      local saved, err = saveNoteForTrack(trackGUID, noteText)
-      
-      if saved then
-        refreshJSFXForTrack(currentTrack)
+      local success, info = performSave(currentTrack, noteText)
+      if success then
         statusMsg = '✅ Font scale updated'
-        isDirty = false
       else
-        statusMsg = '❌ Autosave failed: ' .. (err or "unknown")
+        statusMsg = '❌ Autosave failed: ' .. info
       end
     end
   end
@@ -1000,14 +1055,11 @@ local function renderUI()
   end
   if reaper.ImGui_IsItemDeactivatedAfterEdit and reaper.ImGui_IsItemDeactivatedAfterEdit(ctx) then
     if currentTrack and isValidTrack(currentTrack) then
-      local trackGUID = getTrackGUID(currentTrack)
-      local saved, err = saveNoteForTrack(trackGUID, noteText)
-      if saved then
-        refreshJSFXForTrack(currentTrack)
+      local success, info = performSave(currentTrack, noteText)
+      if success then
         statusMsg = '✅ Font size updated'
-        isDirty = false
       else
-        statusMsg = '❌ Autosave failed: ' .. (err or "unknown")
+        statusMsg = '❌ Autosave failed: ' .. info
       end
     end
   end
@@ -1015,16 +1067,97 @@ local function renderUI()
   -- JSFX Background Color Picker
   reaper.ImGui_SameLine(ctx)
   
-  -- Use cached U32 color to preserve ImGui HSV state
-  local col_flags = reaper.ImGui_ColorEditFlags_NoInputs() | reaper.ImGui_ColorEditFlags_NoLabel()
-  
   if not jsfxBgColorU32 then
     jsfxBgColorU32 = pack_argb(jsfxBgColor[1], jsfxBgColor[2], jsfxBgColor[3], 1.0)
   end
   
-  -- ReaImGui ColorEdit4 outputs ARGB packed U32
-  local full_col_flags = col_flags | reaper.ImGui_ColorEditFlags_NoAlpha()
-  local changed, new_packed_color = reaper.ImGui_ColorEdit4(ctx, '🎨 BG Color', jsfxBgColorU32, full_col_flags)
+  local changed = false
+  local color_edit_finished = false
+  local new_packed_color = jsfxBgColorU32
+  
+  local main_btn_flags = reaper.ImGui_ColorEditFlags_NoAlpha()
+  if reaper.ImGui_ColorButton(ctx, '🎨 BG Color', jsfxBgColorU32, main_btn_flags) then
+    reaper.ImGui_OpenPopup(ctx, 'ColorPickerPopup')
+  end
+  if reaper.ImGui_IsItemHovered(ctx) then
+    reaper.ImGui_SetTooltip(ctx, "Click to change JSFX Background Color")
+  end
+  
+  if reaper.ImGui_BeginPopup(ctx, 'ColorPickerPopup') then
+    
+    reaper.ImGui_Text(ctx, "Saved Colors:")
+    reaper.ImGui_SameLine(ctx)
+    if reaper.ImGui_Button(ctx, "Save Current") then
+       local palette_str = reaper.GetExtState("FloopScratchpad", "ColorPalette") or ""
+       local colors = {}
+       local seen = {}
+       local current_u32 = (jsfxBgColorU32 or 0) & 0xFFFFFFFF
+       local current_hex = string.format("%08X", current_u32)
+       for hex in palette_str:gmatch("%S+") do
+         local h = tostring(hex):upper():match("(%x%x%x%x%x%x%x%x)$")
+         if h and h ~= current_hex and not seen[h] then
+           table.insert(colors, h)
+           seen[h] = true
+         end
+       end
+       table.insert(colors, 1, current_hex)
+       while #colors > 5 do table.remove(colors) end
+       reaper.SetExtState("FloopScratchpad", "ColorPalette", table.concat(colors, " "), true)
+    end
+    
+    local palette_str = reaper.GetExtState("FloopScratchpad", "ColorPalette") or ""
+     if palette_str ~= "" then
+        reaper.ImGui_Spacing(ctx)
+        local i = 0
+        local colors_to_keep = {}
+        local palette_changed = false
+        
+        for hex in palette_str:gmatch("%S+") do
+           local u32_color = tonumber(hex, 16)
+           if u32_color then
+              if i > 0 and (i % 5) ~= 0 then reaper.ImGui_SameLine(ctx) end
+              
+              local pal_btn_flags = reaper.ImGui_ColorEditFlags_NoAlpha()
+              
+              if reaper.ImGui_ColorButton(ctx, "##pal_"..i, u32_color, pal_btn_flags) then
+                 changed = true
+                 new_packed_color = u32_color
+                 color_edit_finished = true
+              end
+              
+              if reaper.ImGui_IsItemHovered(ctx) then
+                reaper.ImGui_SetTooltip(ctx, "Left-click: Apply\nRight-click: Delete")
+              end
+              
+              if reaper.ImGui_IsItemClicked(ctx, 1) then
+                 palette_changed = true
+              else
+                 table.insert(colors_to_keep, hex)
+              end
+              
+              i = i + 1
+           end
+        end
+        
+        if palette_changed then
+           reaper.SetExtState("FloopScratchpad", "ColorPalette", table.concat(colors_to_keep, " "), true)
+        end
+     end
+    
+    reaper.ImGui_Separator(ctx)
+    
+    local picker_flags = reaper.ImGui_ColorEditFlags_NoAlpha() | reaper.ImGui_ColorEditFlags_DisplayHex() | reaper.ImGui_ColorEditFlags_NoSidePreview()
+    local picker_changed, picker_color = reaper.ImGui_ColorPicker4(ctx, '##picker', jsfxBgColorU32, picker_flags)
+    if picker_changed then
+       changed = true
+       new_packed_color = picker_color
+    end
+    if reaper.ImGui_IsItemDeactivatedAfterEdit(ctx) then
+       color_edit_finished = true
+    end
+    
+    reaper.ImGui_EndPopup(ctx)
+  end
   
   if changed then
     jsfxBgColorU32 = new_packed_color
@@ -1033,125 +1166,58 @@ local function renderUI()
     jsfxBgColor = {new_r, new_g, new_b}
     isDirty = true
     
-    -- Real-time JSFX update during color picking
     if currentTrack and isValidTrack(currentTrack) then
       local track_id = getTrackID(currentTrack)
       writeNoteToGmem(track_id, noteText, jsfxFontScale, jsfxForceLarge, jsfxBgColor)
     end
   end
   
-  -- Save color to ExtState on edit completion
-  if reaper.ImGui_IsItemDeactivatedAfterEdit(ctx) then
+  if color_edit_finished then
     if currentTrack and isValidTrack(currentTrack) then
-      local trackGUID = getTrackGUID(currentTrack)
-      saveNoteForTrack(trackGUID, noteText)
+      performSave(currentTrack, noteText)
     end
-    -- Save global default color
     reaper.SetExtState("FloopScratchpad", "default_bg_r", tostring(jsfxBgColor[1]), true)
     reaper.SetExtState("FloopScratchpad", "default_bg_g", tostring(jsfxBgColor[2]), true)
     reaper.SetExtState("FloopScratchpad", "default_bg_b", tostring(jsfxBgColor[3]), true)
   end
-  if reaper.ImGui_IsItemHovered(ctx) then
-    reaper.ImGui_SetTooltip(ctx, "Click to change JSFX Background Color")
-  end
   
-  -- Hotkeys
   local isCtrlDown = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Mod_Ctrl())
   local isSuperDown = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Mod_Super())
   local isSKeyPressed = reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_S())
+  local isEnterKeyPressed = reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Enter()) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_KeypadEnter())
+  local isEscKeyPressed = reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Escape())
   
   if (isCtrlDown or isSuperDown) and isSKeyPressed then
     if currentTrack and isValidTrack(currentTrack) then
-      local trackGUID = getTrackGUID(currentTrack)
-      local success, info = saveNoteForTrack(trackGUID, noteText)
+      local success, info = performSave(currentTrack, noteText)
       if success then
         statusMsg = '✅ Note saved (Shortcut) for track: ' .. getTrackName(currentTrack)
-        
-        -- Update JSFX
-        local track_id = getTrackID(currentTrack)
-        local hasNotes = noteText and noteText:match('%S')
-        local fxCount = reaper.TrackFX_GetCount(currentTrack)
-        local hasJSFX = false
-        
-        if hasNotes then
-          writeNoteToGmem(track_id, noteText, jsfxFontScale, jsfxForceLarge, jsfxBgColor)
-        end
-        
-        for i = fxCount - 1, 0, -1 do
-          local _, fxName = reaper.TrackFX_GetFXName(currentTrack, i, '')
-          if fxName:find('FloopNoteReader') or fxName:find('Floop Note Reader') then
-            hasJSFX = true
-            if not hasNotes then
-              reaper.TrackFX_Delete(currentTrack, i)
-              statusMsg = statusMsg .. ' - JSFX removed (empty note)'
-            else
-              reaper.TrackFX_SetParam(currentTrack, i, 0, track_id)
-              reaper.TrackFX_SetParam(currentTrack, i, 1, getProjectID())
-              statusMsg = statusMsg .. ' - JSFX updated automatically'
-            end
-          end
-        end
-        
-        if hasNotes and not hasJSFX then
-           local newSuccess, newInfo = addJSFXToTrack(currentTrack, jsfxFontScale, jsfxForceLarge, jsfxBgColor)
-           if newSuccess then
-             statusMsg = statusMsg .. ' - JSFX updated automatically'
-           else
-             statusMsg = statusMsg .. ' - Error updating JSFX'
-           end
-        end
-        
-        isDirty = false
       else
         statusMsg = '❌ Error: ' .. info
       end
     end
   end
   
+  if (isCtrlDown or isSuperDown) and isEnterKeyPressed then
+    if currentTrack and isValidTrack(currentTrack) then
+      performSave(currentTrack, noteText)
+    end
+    requestClose = true
+  end
+  
+  local isPopupOpen = reaper.ImGui_IsPopupOpen(ctx, "", reaper.ImGui_PopupFlags_AnyPopupId() | reaper.ImGui_PopupFlags_AnyPopupLevel())
+  if isEscKeyPressed and not wasTextFocused and not isPopupOpen then
+    requestClose = true
+  end
+  wasTextFocused = isTextFocused
+  
   reaper.ImGui_Spacing(ctx)
   
   if reaper.ImGui_Button(ctx, '💾 Save') then
     if currentTrack and isValidTrack(currentTrack) then
-      local trackGUID = getTrackGUID(currentTrack)
-      local success, info = saveNoteForTrack(trackGUID, noteText)
+      local success, info = performSave(currentTrack, noteText)
       if success then
         statusMsg = '✅ Note saved for track: ' .. getTrackName(currentTrack)
-        
-        -- Update JSFX
-        local track_id = getTrackID(currentTrack)
-        local hasNotes = noteText and noteText:match('%S')
-        local fxCount = reaper.TrackFX_GetCount(currentTrack)
-        local hasJSFX = false
-        
-        if hasNotes then
-          writeNoteToGmem(track_id, noteText, jsfxFontScale, jsfxForceLarge, jsfxBgColor)
-        end
-        
-        for i = fxCount - 1, 0, -1 do
-          local _, fxName = reaper.TrackFX_GetFXName(currentTrack, i, '')
-          
-          if fxName:find('FloopNoteReader') or fxName:find('Floop Note Reader') then
-            hasJSFX = true
-            if not hasNotes then
-              reaper.TrackFX_Delete(currentTrack, i)
-              statusMsg = statusMsg .. ' - JSFX removed (empty note)'
-            else
-              reaper.TrackFX_SetParam(currentTrack, i, 0, track_id)
-              reaper.TrackFX_SetParam(currentTrack, i, 1, getProjectID())
-              statusMsg = statusMsg .. ' - JSFX updated automatically'
-            end
-          end
-        end
-        
-        if hasNotes and not hasJSFX then
-           local newSuccess, newInfo = addJSFXToTrack(currentTrack, jsfxFontScale, jsfxForceLarge, jsfxBgColor)
-           if newSuccess then
-             statusMsg = statusMsg .. ' - JSFX updated automatically'
-           else
-             statusMsg = statusMsg .. ' - Error updating JSFX'
-           end
-        end
-        
       else
         statusMsg = '❌ Error: ' .. info
       end
@@ -1230,43 +1296,56 @@ local function renderUI()
     if reaper.ImGui_BeginPopupModal(ctx, 'Help Guide', true, flags) then
       reaper.ImGui_PushTextWrapPos(ctx, 0.0)
       
-      reaper.ImGui_Text(ctx, '📖 Floop Scratchpad - User Guide')
-      reaper.ImGui_Separator(ctx)
-      reaper.ImGui_Spacing(ctx)
-      
-      reaper.ImGui_Text(ctx, '🚀 Getting Started:')
-      reaper.ImGui_BulletText(ctx, 'Select a track in REAPER to start taking notes')
-      reaper.ImGui_BulletText(ctx, 'The track name and GUID will appear in the interface')
-      reaper.ImGui_BulletText(ctx, 'Notes are automatically loaded when switching tracks')
-      reaper.ImGui_BulletText(ctx, 'JSFX Setup: open FX Browser and press F5 to refresh plugins')
-      reaper.ImGui_BulletText(ctx, 'Find FloopNoteReader, right-click and select "Default settings for new instance"')
-      reaper.ImGui_BulletText(ctx, 'Enable "Show embedded UI in TCP or MCP" for automatic display')
-      reaper.ImGui_Spacing(ctx)
-      
-      reaper.ImGui_Text(ctx, '📝 Taking Notes:')
-      reaper.ImGui_BulletText(ctx, 'Type your notes in the text area')
-      reaper.ImGui_BulletText(ctx, 'JSFX displays up to 200 characters (extra text is truncated)')
-      reaper.ImGui_BulletText(ctx, 'Character count is displayed below the text area')
-      reaper.ImGui_Spacing(ctx)
-      
-      reaper.ImGui_Text(ctx, '💾 Saving & Controls:')
-      reaper.ImGui_BulletText(ctx, '💾 Save: Manually saves notes. You can also use Ctrl+S / Cmd+S')
-      reaper.ImGui_BulletText(ctx, '+ Add JSFX: Adds a visual note reader to the track TCP')
-      reaper.ImGui_BulletText(ctx, 'Aa Text Size: Use slider or numeric input (14–40 px). Updates on release.')
-      reaper.ImGui_BulletText(ctx, '🎨 BG Color: Pick a custom background color for the JSFX.')
-      reaper.ImGui_BulletText(ctx, 'Clear All Notes: Deletes all notes and JSFX from the current project.')
-      reaper.ImGui_Spacing(ctx)
-      
-      reaper.ImGui_Text(ctx, '📁 V2 Architecture & File Management:')
-      reaper.ImGui_BulletText(ctx, 'All notes are saved natively inside the .rpp project file (ProjExtState).')
-      reaper.ImGui_BulletText(ctx, 'Background startup script is NO LONGER needed and can be safely removed.')
-      reaper.ImGui_BulletText(ctx, 'Migrate V1: Click this to safely import old _notes.txt files to V2 format.')
-      reaper.ImGui_Spacing(ctx)
-      
-      reaper.ImGui_Text(ctx, '💡 Tips:')
-      reaper.ImGui_BulletText(ctx, 'JSFX now features native Word-Wrapping for dynamic resizing!')
-      reaper.ImGui_BulletText(ctx, 'Each track has its own note, color, and font settings')
-      reaper.ImGui_BulletText(ctx, 'Toggle "UI Theme" at the top right to match your REAPER colors.')
+      if reaper.ImGui_BeginChild(ctx, "HelpContent", 0, -48) then
+        reaper.ImGui_Text(ctx, 'FLOOP SCRATCHPAD - HELP')
+        reaper.ImGui_Separator(ctx)
+        reaper.ImGui_Spacing(ctx)
+        
+        reaper.ImGui_Text(ctx, 'WHAT THIS SCRIPT DOES')
+        reaper.ImGui_TextWrapped(ctx, 'Per-track notes editor for REAPER. Notes are stored in the project file (ProjExtState) and can be displayed in the track panels via a companion JSFX.')
+        reaper.ImGui_Spacing(ctx)
+        
+        reaper.ImGui_Text(ctx, 'GETTING STARTED')
+        reaper.ImGui_BulletText(ctx, 'Select a track in REAPER to start taking notes')
+        reaper.ImGui_BulletText(ctx, 'The selected track name and GUID are shown in the UI')
+        reaper.ImGui_BulletText(ctx, 'Notes are loaded automatically when switching tracks')
+        reaper.ImGui_Spacing(ctx)
+        
+        reaper.ImGui_Text(ctx, 'TAKING NOTES')
+        reaper.ImGui_BulletText(ctx, 'Type your notes in the text area')
+        reaper.ImGui_BulletText(ctx, 'JSFX displays up to 200 characters (extra text is truncated)')
+        reaper.ImGui_BulletText(ctx, 'Character count is displayed below the text area')
+        reaper.ImGui_Spacing(ctx)
+        
+        reaper.ImGui_Text(ctx, 'SAVING & SHORTCUTS')
+        reaper.ImGui_BulletText(ctx, 'Save button: manually saves notes (Ctrl+S / Cmd+S)')
+        reaper.ImGui_BulletText(ctx, 'Ctrl+Enter / Cmd+Enter: save note and close the window')
+        reaper.ImGui_BulletText(ctx, 'ESC: close the window (auto-saves if needed)')
+        reaper.ImGui_BulletText(ctx, '+ Add JSFX: adds a visual note reader to the track TCP/MCP')
+        reaper.ImGui_BulletText(ctx, 'Aa Text Size: Use slider or numeric input (14–40 px). Updates on release.')
+        reaper.ImGui_BulletText(ctx, 'BG Color: pick a custom background color (with a saved palette)')
+        reaper.ImGui_BulletText(ctx, 'Clear All Notes: Deletes all notes and JSFX from the current project.')
+        reaper.ImGui_Spacing(ctx)
+        
+        reaper.ImGui_Text(ctx, 'JSFX SETUP (TCP / MCP)')
+        reaper.ImGui_BulletText(ctx, 'Open FX Browser and press F5 to refresh the JSFX list')
+        reaper.ImGui_BulletText(ctx, 'Find FloopNoteReader, right-click, and select "Default settings for new instance"')
+        reaper.ImGui_BulletText(ctx, 'Enable "Show embedded UI in TCP or MCP"')
+        reaper.ImGui_Spacing(ctx)
+        
+        reaper.ImGui_Text(ctx, 'DATA & MIGRATION')
+        reaper.ImGui_BulletText(ctx, 'Notes are stored in the .rpp project file (ProjExtState)')
+        reaper.ImGui_BulletText(ctx, 'Migrate V1: imports legacy _notes.txt files into the V2 format')
+        reaper.ImGui_Spacing(ctx)
+        
+        reaper.ImGui_Text(ctx, 'SUPPORT')
+        reaper.ImGui_TextWrapped(ctx, 'If this script saves you time, a coffee is always appreciated.')
+        reaper.ImGui_Spacing(ctx)
+        if reaper.ImGui_Button(ctx, "Support Floop's Reaper Scripts on Ko-fi") then
+          open_url("https://ko-fi.com/floopsreaperscripts")
+        end
+        reaper.ImGui_EndChild(ctx)
+      end
       
       reaper.ImGui_PopTextWrapPos(ctx)
       
@@ -1277,7 +1356,6 @@ local function renderUI()
       local availWidth = reaper.ImGui_GetContentRegionAvail(ctx)
       local buttonWidth = 100
       reaper.ImGui_SetCursorPosX(ctx, (availWidth - buttonWidth) * 0.5)
-      
       if reaper.ImGui_Button(ctx, 'Close', buttonWidth, 30) then
         showHelpModal = false
         reaper.ImGui_CloseCurrentPopup(ctx)
@@ -1320,6 +1398,7 @@ local function renderUI()
     end
   end
   
+  return requestClose
 end
 
 local non_sync_boot = true
@@ -1353,17 +1432,19 @@ local function mainLoop()
   
   reaper.ImGui_SetNextWindowSizeConstraints(ctx, 440, 480, 4000, 4000)
   reaper.ImGui_SetNextWindowSize(ctx, 460, 560, reaper.ImGui_Cond_FirstUseEver())
+  -- Remove NoSavedSettings to allow palette saving
   local visible, open = reaper.ImGui_Begin(ctx, 'Floop Scratchpad', true, reaper.ImGui_WindowFlags_NoCollapse())
+  local requestClose = false
   
   if visible then
-    renderUI()
+    requestClose = renderUI()
     reaper.ImGui_End(ctx)
   end
   
   end_theme(color_count)
   reaper.ImGui_PopFont(ctx)
   
-  if open then
+  if open and not requestClose then
     reaper.defer(mainLoop)
   end
 end
@@ -1371,3 +1452,9 @@ end
 -- Init
 initializeUI()
 mainLoop()
+
+reaper.atexit(function()
+  if isDirty and currentTrack and isValidTrack(currentTrack) then
+    performSave(currentTrack, noteText)
+  end
+end)

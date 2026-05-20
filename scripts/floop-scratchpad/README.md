@@ -1,6 +1,6 @@
 # Floop Scratchpad
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-2.0.1-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-2.1.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 **Track Notes System for REAPER.**
 
@@ -79,7 +79,7 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 1.  **Launch** "Floop Scratchpad" from the Actions List.
 2.  **Select a track**: Its name and GUID appear in the interface.
 3.  **Type notes** and adjust Text Size or Background Color.
-4.  **Save**: Notes auto-save when switching tracks, or you can press **Ctrl+S** / **Cmd+S** to save instantly.
+4.  **Save**: Notes auto-save when switching tracks. You can also press **Ctrl+S** / **Cmd+S** to save instantly, or **Ctrl+Enter** / **Cmd+Enter** to save and close the window immediately. Pressing **ESC** will close the window safely (auto-saving if needed).
 
 ### Embedding Notes in TCP / MCP
 
@@ -89,6 +89,11 @@ The easiest way to install and keep the script updated is via **ReaPack**.
    *   Future instances will automatically embed themselves in the track panel!
 
 ## Changelog
+
+### v2.1.0
+* **UX Improved:** Added workflow shortcuts to speed up saving/closing (`Ctrl/Cmd+S`, `Ctrl/Cmd+Enter`, `ESC`).
+* **JSFX Update:** Text color adapts (light/dark) based on background color for readability.
+* **Color Picker:** Added saved color palette (5 slots).
 
 ### v2.0.1 (Hotfix)
 * **UI Hotfix:** Adjusted text wrapping layout inside the Help Guide modal.
