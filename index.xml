@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="4083130d57c0f9f18c3c1348a7e57642e8fd9b2e">
+<index version="1" name="Floop's Reaper Scripts" commit="33ea87ceb8c979a247100bc49490f3b85cd0e23b">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -326,6 +326,13 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
 + Full rewrite using ProjExtState (no external files needed).
 + Hotfix: UI layout adjustment for the Help modal text wrapping.]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/47b2e6a877415add7332d46a16828baa9a54624e/scripts/floop-scratchpad/floop-scratchpad.lua</source>
+      </version>
+      <version name="2.1.0" author="Floop-s" time="2026-05-20T06:27:57Z">
+        <changelog><![CDATA[+ V2.1.0
++ Added workflow shortcuts to speed up saving/closing.
++ JSFX: Text luminance adapts (light/dark) based on background color.
++ Color Picker: Added saved color palette (5 slots).]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/33ea87ceb8c979a247100bc49490f3b85cd0e23b/scripts/floop-scratchpad/floop-scratchpad.lua</source>
       </version>
     </reapack>
   </category>
