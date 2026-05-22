@@ -1,12 +1,15 @@
 -- Floop Search - Track Navigation System
 -- @description Floop Search: fast track navigation and search tool
--- @version 1.0.0
+-- @version 1.1.0
 -- @author Floop-s
 -- @license GPL-3.0
 -- @changelog
---   Initial release.
---   Track search, selection, and previewing.
---   Animated floating UI with debounced search.
+--   v1.1.0 (2026-05-22)
+--   + Added support for comma operator to search multiple groups (e.g. 'kick, snare').
+--   + Added SHIFT+ENTER shortcut to select all search results at once.
+--   + Added full Undo support for track selection.
+--   + Added 'Lazy Snapshot' for massive performance improvements on large projects.
+--   + Script now ignores hidden tracks.
 -- @about
 --   Fast track navigation and search tool for REAPER.
 --
@@ -57,6 +60,7 @@ local state = {
     preview_solo_guid = nil,
     done = false,
     confirmed = false,
+    select_all = false,
     restored = false,
     window_h = BAR_HEIGHT,
     -- Debounce
@@ -90,10 +94,8 @@ local function RestoreSoloState(guid)
     end
 end
 
-local function SaveInitialState()
-    for i = 0, r.CountTracks(0)-1 do
-        local tr = r.GetTrack(0, i)
-        local guid = r.GetTrackGUID(tr)
+local function EnsureTrackStateSaved(guid, tr)
+    if not state.initial_track_states[guid] and r.ValidatePtr(tr, 'MediaTrack*') then
         state.initial_track_states[guid] = {
             track = tr,
             solo = r.GetMediaTrackInfo_Value(tr, "I_SOLO"),
@@ -125,12 +127,27 @@ local function RestoreInitialState()
     r.PreventUIRefresh(-1)
 end
 
-local function ParseQuery(q)
-    local tokens = {}
-    for token in q:lower():gmatch("%S+") do
-        table.insert(tokens, token)
+local function TrackMatchesQuery(entry, query)
+    if query == "" then return false end
+    -- Support multiple queries separated by comma
+    for clause in query:gmatch("[^,]+") do
+        local tokens = {}
+        for token in clause:lower():gmatch("%S+") do
+            table.insert(tokens, token)
+        end
+        
+        if #tokens > 0 then
+            local match_clause = true
+            for _, token in ipairs(tokens) do
+                if not (entry.lower_name:find(token, 1, true) or tostring(entry.number):find(token, 1, true)) then
+                    match_clause = false
+                    break
+                end
+            end
+            if match_clause then return true end
+        end
     end
-    return tokens
+    return false
 end
 
 local function RefreshTrackCache()
@@ -138,28 +155,31 @@ local function RefreshTrackCache()
     local count = r.CountTracks(0)
     for i = 0, count - 1 do
         local tr = r.GetTrack(0, i)
-        local _, name = r.GetSetMediaTrackInfo_String(tr, "P_NAME", "", false)
-        if name == "" then name = "Track " .. (i+1) end
-        local num = math.floor(r.GetMediaTrackInfo_Value(tr, "IP_TRACKNUMBER"))
-        local guid = r.GetTrackGUID(tr)
-        local color = r.GetTrackColor(tr)
-        
-        -- Pre-calculate RGBA for UI
-        local rgba = 0x888888FF
-        if color ~= 0 then
-            local rv, gv, bv = r.ColorFromNative(color)
-            rgba = (rv << 24) | (gv << 16) | (bv << 8) | 0xFF
-        end
+        -- Skip tracks hidden in TCP
+        if r.GetMediaTrackInfo_Value(tr, "B_SHOWINTCP") == 1 then
+            local _, name = r.GetSetMediaTrackInfo_String(tr, "P_NAME", "", false)
+            if name == "" then name = "Track " .. (i+1) end
+            local num = math.floor(r.GetMediaTrackInfo_Value(tr, "IP_TRACKNUMBER"))
+            local guid = r.GetTrackGUID(tr)
+            local color = r.GetTrackColor(tr)
+            
+            -- Pre-calculate RGBA for UI
+            local rgba = 0x888888FF
+            if color ~= 0 then
+                local rv, gv, bv = r.ColorFromNative(color)
+                rgba = (rv << 24) | (gv << 16) | (bv << 8) | 0xFF
+            end
 
-        table.insert(state.track_cache, {
-            name = name,
-            lower_name = name:lower(),
-            number = num,
-            track = tr,
-            guid = guid,
-            color = rgba,
-            native_color = color
-        })
+            table.insert(state.track_cache, {
+                name = name,
+                lower_name = name:lower(),
+                number = num,
+                track = tr,
+                guid = guid,
+                color = rgba,
+                native_color = color
+            })
+        end
     end
     state.last_proj_change_count = r.GetProjectStateChangeCount(0)
 end
@@ -214,19 +234,10 @@ local function UpdateResults()
         return 
     end
 
-    local tokens = ParseQuery(state.query)
     local current_guids = {}
 
     for _, entry in ipairs(state.track_cache) do
-        local match = true
-        for _, token in ipairs(tokens) do
-            if not (entry.lower_name:find(token, 1, true) or tostring(entry.number):find(token, 1, true)) then
-                match = false
-                break
-            end
-        end
-
-        if match then
+        if TrackMatchesQuery(entry, state.query) then
             if r.ValidatePtr(entry.track, 'MediaTrack*') then
                 table.insert(state.results, entry)
                 current_guids[entry.guid] = true
@@ -250,16 +261,7 @@ local function UpdateResults()
     state.highlighted_guids = {}
     local red = r.ColorToNative(255, 0, 0)
     for _, res in ipairs(state.results) do
-        -- Safety for new tracks
-        if not state.initial_track_states[res.guid] then
-             state.initial_track_states[res.guid] = {
-                track = res.track,
-                solo = r.GetMediaTrackInfo_Value(res.track, "I_SOLO"),
-                selected = r.IsTrackSelected(res.track),
-                compact = r.GetMediaTrackInfo_Value(res.track, "I_FOLDERCOMPACT"),
-                color = r.GetTrackColor(res.track)
-            }
-        end
+        EnsureTrackStateSaved(res.guid, res.track)
         r.SetTrackColor(res.track, red)
         state.highlighted_guids[res.guid] = res.track
     end
@@ -274,6 +276,7 @@ local function HandlePreviewSolo()
     if alt and res then
         if state.preview_solo_guid ~= res.guid then
             if state.preview_solo_guid then RestoreSoloState(state.preview_solo_guid) end
+            EnsureTrackStateSaved(res.guid, res.track)
             r.SetMediaTrackInfo_Value(res.track, "I_SOLO", 1)
             state.preview_solo_guid = res.guid
             r.UpdateArrange()
@@ -331,7 +334,7 @@ local function Loop()
         r.ImGui_SetCursorPos(ctx, WINDOW_W - 40, 16)
         r.ImGui_TextDisabled(ctx, "(?)")
         if r.ImGui_IsItemHovered(ctx) then
-            r.ImGui_SetTooltip(ctx, "Controls:\nARROWS : Navigate List\nHOLD ALT : Solo Selected Track (Preview)\nENTER : Select Track\nESC : Close")
+            r.ImGui_SetTooltip(ctx, "Controls:\nARROWS : Navigate List\nHOLD ALT : Solo Selected Track (Preview)\nENTER : Select Highlighted Track\nSHIFT+ENTER : Select All Results\nESC : Close")
         end
         
         if changed then
@@ -368,7 +371,11 @@ local function Loop()
             elseif r.ImGui_IsKeyPressed(ctx, IG_Const('Key_UpArrow')) then
                 state.selected_index = math.max(1, state.selected_index - 1)
             elseif r.ImGui_IsKeyPressed(ctx, IG_Const('Key_Enter')) or r.ImGui_IsKeyPressed(ctx, IG_Const('Key_KeypadEnter')) then
-                if #state.results > 0 then state.done = true state.confirmed = true end
+                if #state.results > 0 then
+                    state.done = true
+                    state.confirmed = true
+                    state.select_all = r.ImGui_IsKeyDown(ctx, IG_Const('Mod_Shift'))
+                end
             elseif r.ImGui_IsKeyPressed(ctx, IG_Const('Key_Escape')) then state.done = true end
         end
 
@@ -415,17 +422,48 @@ local function Loop()
     r.ImGui_PopStyleVar(ctx, 3)
     
     if state.done then
-        if state.confirmed then
-            local res = state.results[state.selected_index]
-            if res then
-                RestoreInitialState()
-                r.Main_OnCommand(40297, 0)
-                r.SetTrackSelected(res.track, true)
-                ExpandParentFoldersForTrack(res.track)
-                r.Main_OnCommand(40913, 0) -- View: Scroll view to selected tracks
-                r.TrackList_AdjustWindows(false)
-                r.UpdateArrange()
+        if state.confirmed and #state.results > 0 then
+            RestoreInitialState()
+            r.Undo_BeginBlock()
+            r.Main_OnCommand(40297, 0) -- Unselect all tracks
+            
+            if state.select_all then
+                -- Select all matching tracks
+                for _, res in ipairs(state.results) do
+                    if r.ValidatePtr(res.track, 'MediaTrack*') then
+                        r.SetTrackSelected(res.track, true)
+                        ExpandParentFoldersForTrack(res.track)
+                    end
+                end
+                
+                -- Scroll to the actively highlighted track
+                local active_res = state.results[state.selected_index]
+                if active_res and r.ValidatePtr(active_res.track, 'MediaTrack*') then
+                    -- Temporarily select only this one to scroll to it
+                    r.Main_OnCommand(40297, 0)
+                    r.SetTrackSelected(active_res.track, true)
+                    r.Main_OnCommand(40913, 0) -- View: Scroll view to selected tracks
+                    
+                    -- Reselect all matching tracks
+                    for _, res in ipairs(state.results) do
+                        if r.ValidatePtr(res.track, 'MediaTrack*') then
+                            r.SetTrackSelected(res.track, true)
+                        end
+                    end
+                end
+            else
+                -- Select ONLY the highlighted track
+                local res = state.results[state.selected_index]
+                if res and r.ValidatePtr(res.track, 'MediaTrack*') then
+                    r.SetTrackSelected(res.track, true)
+                    ExpandParentFoldersForTrack(res.track)
+                    r.Main_OnCommand(40913, 0) -- View: Scroll view to selected tracks
+                end
             end
+            
+            r.TrackList_AdjustWindows(false)
+            r.UpdateArrange()
+            r.Undo_EndBlock(state.select_all and "Floop Search: Select All" or "Floop Search: Select Track", -1)
         else RestoreInitialState() end
         return
     end
@@ -441,5 +479,4 @@ r.atexit(function()
     r.RefreshToolbar2(sid, cid)
 end)
 
-SaveInitialState()
 r.defer(Loop)
