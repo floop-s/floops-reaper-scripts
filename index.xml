@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="e5de2cfa5708dcc7bec464db1849077ac0992510">
+<index version="1" name="Floop's Reaper Scripts" commit="ab3800f293163a80fa37d5d71c60357d56667d4d">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -417,6 +417,15 @@ Animated floating UI with debounced search.]]></changelog>
         <changelog><![CDATA[v1.2 (2026-02-05)
 - Fix: Solved crash with fractional Project BPM values.]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/5a25846b48cb21764d45ef7b54e2c9d187bfb195/scripts/floop-studio-trainer/floop-studio-trainer.lua</source>
+      </version>
+      <version name="1.3" author="Floop-s" time="2026-06-02T13:24:45Z">
+        <changelog><![CDATA[v1.3 (2026-06-02)
+- New: Advanced Training Mode (cycles, BPM range, end behavior)
+- UI: ReaImGui redesign + metronome icon + in-app Help window
+- Docs: Added quick guide (count-in + custom metronome click note)
+- Fix: More robust loop restart + safer undo handling]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/ab3800f293163a80fa37d5d71c60357d56667d4d/scripts/floop-studio-trainer/floop-studio-trainer.lua</source>
+        <source file="IMG/metro-nome.png">https://github.com/floop-s/floops-reaper-scripts/raw/ab3800f293163a80fa37d5d71c60357d56667d4d/scripts/floop-studio-trainer/IMG/metro-nome.png</source>
       </version>
     </reapack>
   </category>
