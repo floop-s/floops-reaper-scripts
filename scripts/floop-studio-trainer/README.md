@@ -1,45 +1,49 @@
 # Floop Studio Trainer
 
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.3-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+
 **A smart practice companion for Reaper.**
 
 ## Overview
 
 **Floop Studio Trainer** is a Lua script for REAPER that allows you to practice your instrument inside Reaper using either an audio track or the metronome. You can set the number of repetitions for a selected section and define how many BPM to increase at a time.
-Once configured, simply press start, and the script will automatically increase the project BPM after each cycle—without ever taking your hands off your instrument.
+Once configured, simply press start, and the script will automatically increase the project BPM after each cycle, without ever taking your hands off your instrument.
 The script also displays the remaining repetitions.
 
 ## Screenshots
 
-<p align="center"> 
-  <br> 
-  <a href="../../assets/floop-studio-trainer-v1.1.png" target="_blank"> 
-    <img src="../../assets/floop-studio-trainer-v1.1.png" width="450"  alt="click to zoom in"> 
-  </a> 
-  <br> 
+<p align="center">
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-studio-trainer-simple-training.png" target="_blank">
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-studio-trainer-simple-training.png" width="45%" alt="Simple training">
+  </a>&nbsp;
+  <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-studio-trainer-complex%20mode.png" target="_blank">
+    <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-studio-trainer-complex%20mode.png" width="45%" alt="Complex training">
+  </a>
+  
 </p>
 
 
 ## Key Features
 
+*   **Dual Training Modes**: Choose between *Simple Training* (basic repetitions) and *Complex Training* (advanced cycles, start/max BPM, and end behaviors).
 *   **Automated BPM Increase**: Automatically raises the project tempo after a set number of repetitions.
 *   **Hands-Free Practice**: Focus entirely on your instrument without needing to touch the mouse or keyboard.
-*   **Visual Feedback**: Real-time countdown of remaining repetitions.
-*   **Metronome Control**: Toggle the metronome directly from the script interface.
+*   **Visual Feedback**: Real-time countdown of remaining repetitions and current cycle tracking.
+*   **Metronome Control**: Toggle the metronome directly from the script interface via a custom interactive icon.
 *   **Safe Tempo Restoration**: Option to automatically restore the original project BPM when closing the script.
-*   **Synchronization Safety**: Integrated help tooltip to ensure correct Timebase settings for audio tracks.
-*   **User-Friendly GUI**: Clean interface built with ReaImGui.
+*   **Synchronization Safety**: Integrated in-app help to ensure correct Timebase settings for audio tracks.
+*   **User-Friendly GUI**: Clean interface built with ReaImGui, featuring Framed Groups and dynamic resizing.
 
 ## Requirements
 
 *   **REAPER** (latest version recommended).
-*   **ReaImGui**: "ReaScript binding for Dear ImGui" installed via ReaPack. **Minimum version required: 0.10.0+**.
+*   **ReaImGui**: "ReaScript binding for Dear ImGui" installed via ReaPack. **Minimum version required: 0.10.2+**.
 
 ## Compatibility
 
 *   **REAPER**: Developed and tested on **v7.5+** (tested on recent versions; may work on older versions but not guaranteed).
-*   **ReaImGui**: Version **0.10.0+** or later (older versions will crash the script).
+*   **ReaImGui**: Version **0.10.2+** or later (older versions will crash the script).
 *   **Operating Systems**: Windows, macOS, Linux (cross-platform support via Reaper's API).
-*   **macOS / Linux**: Not personally tested. While the code uses cross-platform APIs, stability on these systems is not guaranteed. Feedback is welcome.
 *   **Note**: The script relies on Reaper's API and ReaImGui; compatibility issues may arise with very old versions of Reaper or ReaImGui. Always update to the latest stable releases for optimal performance.
 
 ## Installation
@@ -64,12 +68,12 @@ The script also displays the remaining repetitions.
     *   Search for and install `ReaImGui: ReaScript binding for Dear ImGui`.
     *   Restart REAPER.
 2.  **Install the Script**:
-    *   Copy the `Floop-Studio-Trainer.lua` file to your REAPER Scripts folder.
+    *   Copy the entire `floop-studio-trainer` folder (including `IMG/metro-nome.png`) into your REAPER Scripts folder.
     *   Path: `REAPER > Options > Show REAPER resource path > Scripts`.
 3.  **Load the Action**:
     *   Open the **Actions List** (`?`).
     *   Click **New Action > Load ReaScript...**.
-    *   Select `Floop-Studio-Trainer.lua`.
+    *   Select `floop-studio-trainer.lua`.
     *   (Optional) Assign it to a shortcut or custom toolbar button.
 
 ## Quick Start
@@ -80,29 +84,66 @@ The script also displays the remaining repetitions.
 4.  Set your desired **Number of repetitions** and **BPM increment**.
 5.  Press **Start**.
 6.  Play along! The script will handle the tempo changes for you.
+<br><br>
 
 > **Important**: To prevent synchronization issues with audio items, ensure that either the **Project Timebase** or the **Track Timebase** (containing the audio) is set to **'Beats (position, length, rate)'**.
 
+> **Optional (Recommended)**: If you want a count-in before playback starts, open **Metronome Settings** in REAPER and enable:
+> - **Count-in before playback**
+> - **Metronome enabled during playback**
+
+
 ## Parameters
 
-### Settings
-*   **Number of repetitions**: Defines how many times the loop plays before the BPM increases.
-*   **Increase BPM by**: Sets the amount of BPM to add after each cycle.
-*   **Restore original BPM on close**: If enabled, the project tempo reverts to its initial state when you close the script.
+### Training Modes
+*   **Simple Training**: Basic mode where the tempo increases continuously after a set number of repetitions.
+*   **Complex Training**: Advanced mode where you can define a specific BPM range (Start to Max) and repeat the entire progression for a specified number of cycles.
 
-### Controls
-*   **Metronome**: Toggles the Reaper metronome on or off.
+### Simple Mode Settings
+*   **BPM Increment**: Sets the amount of BPM to add after each cycle.
+
+### Complex Mode Settings
+*   **On Finish**: When you reach Max BPM, choose what happens next: stop the training, repeat the training from Start BPM, or keep playing at the maximum speed until you stop (*Stop playing*, *Restart from Start BPM*, *Keep playing at Max BPM*).
+*   **Start BPM**: The initial speed where the training begins.
+*   **Max BPM**: The target maximum speed limit.
+*   **BPM Increment**: How many BPM to add at each new step.
+*   **Total Cycles**: How many times to repeat the whole sequence (from Start to Max BPM).
+
+#### Example (Complex Training)
+Goal: increase speed in clear steps, while repeating each tempo a few times before moving on.
+
+*   **Mode**: Complex Training  
+*   **Start BPM**: 80  
+*   **Max BPM**: 120  
+*   **BPM Increment**: 5  
+*   **Loops / Step**: 3  
+*   **Total Cycles**: 2  
+*   **On Finish**: Stop playing / Restart from Start BPM / Keep playing at Max BPM
+
+### Playback & Feedback
+*   **Repetitions (or Loops / Step)**: Defines how many times the loop plays before the BPM increases.
 *   **Project BPM**: Manually view or edit the current project tempo (Press Enter to apply).
-*   **Start / Stop**: Controls the training session.
-*   **Close**: Exits the script (triggering BPM restoration if enabled).
+
+### Global Controls
+*   **Metronome Icon**: Toggles the Reaper metronome on or off.
+*   **Restore BPM on Exit**: If enabled, the project tempo reverts to its initial state when you close the script.
+*   **Start / Stop**: Controls the training session (can also be triggered using the Spacebar).
 
 ## Troubleshooting
 
 *   **"ReaImGui not found"**: Install via ReaPack and restart REAPER.
 *   **Audio not stretching/speeding up**: Check the "Important" note above regarding Timebase settings. Your audio track must be set to 'Beats (position, length, rate)'.
 *   **Loop not working**: Ensure you have created a time selection and enabled the "Repeat" button in Reaper's transport.
+*   **No count-in**: Enable count-in options in REAPER's Metronome Settings (see Quick Start note above).
+*   **Doubled click at loop end (metronome)**: With some custom metronome click sounds, you may hear a doubled click at the loop boundary. Switching back to REAPER's default metronome sounds usually resolves it.
 
 ## Changelog
+
+### v1.3 (2026-06-02)
+*   **New**: Advanced Training Mode (cycles, BPM range, end behavior).
+*   **UI**: ReaImGui redesign + metronome icon + in-app Help window.
+*   **Docs**: Added quick guide (count-in + custom metronome click note).
+*   **Fix**: More robust loop restart + safer undo handling.
 
 ### v1.2 (2026-02-05)
 *   **Fix**: Solved crash with fractional Project BPM values.
@@ -114,9 +155,15 @@ The script also displays the remaining repetitions.
 *   **UI**: Scalable interface, refined styling, and clearer error messages.
 *   **Fixes**: Better handling of manual seeks and pauses.
 
-### v1.0 (2025-01-02)
+### v1.0.0 (2025-01-02)
 *   Initial release.
 *   Basic loop training functionality with BPM increment.
+
+## Support Development
+
+If you find my scripts useful and want to support their development, you can buy me a coffee on Ko-fi:
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-orange?style=flat-square&logo=ko-fi)](https://ko-fi.com/floopsreaperscripts)
 
 ## Author
 
