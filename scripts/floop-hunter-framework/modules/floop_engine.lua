@@ -9,29 +9,77 @@ local Engine = {}
 local DSP = require("floop_dsp")
 local Logger = require("floop_logger")
 
+local FEATURE_KEYS = {
+  "level", "ratio", "zcr", "air_ratio", "air_db", "chest_ratio",
+  "air_conc", "chest_zcr", "voiced_score", "hf_conc", "hf_tilt", "hf_entropy", "hf_flatness", "low_ratio", "flat", "low_db",
+  "ess_ratio", "ess_zcr", "high_db", "diff_db", "spectral_balance_db", "crest_low", "ma_low_db", "ma_high_db"
+}
+
 -- JSFX
 local JSFX_NAME = "Floop Hunter.jsfx"
 local JSFX_CONTENT = [[
 desc:Floop Hunter (Unified)
-version: 1.0.0
+version: 1.1.0
 author: Floop
-about: Unified gain reduction for Ess, Plosive, and Breath hunters (Master Reduction).
+about: Unified artifact reduction. Slider 1 for Gain, Slider 2 for Plosive HPF.
 
 slider1:0<-60,12,0.1>Artifact Gain (dB)
+slider2:20<20,500,1>Plosive HPF Cutoff (Hz)
 
 @init
 db_scale = 1/20;
 smooth = 0.999;
 current_gain = 1;
+current_hpf_hz = 20;
+
+// HPF Biquad Init
+hpf_b0=1; hpf_b1=0; hpf_b2=0; hpf_a1=0; hpf_a2=0;
+hpf_x1=0; hpf_x2=0; hpf_y1=0; hpf_y2=0;
+hpf_rx1=0; hpf_rx2=0; hpf_ry1=0; hpf_ry2=0;
+
+function update_hpf(fc, Q) (
+  w0 = 2 * $pi * fc / srate;
+  cosw0 = cos(w0);
+  sinw0 = sin(w0);
+  alpha = sinw0 / (2 * Q);
+  
+  a0 = 1 + alpha;
+  hpf_b0 = ((1 + cosw0) / 2) / a0;
+  hpf_b1 = (-(1 + cosw0)) / a0;
+  hpf_b2 = ((1 + cosw0) / 2) / a0;
+  hpf_a1 = (-2 * cosw0) / a0;
+  hpf_a2 = (1 - alpha) / a0;
+);
+update_hpf(20, 0.707);
 
 @slider
-// Only one master slider for all artifacts
 target_gain = 10 ^ (slider1 * db_scale);
+target_hpf_hz = slider2;
+
+@block
+// Smooth and update filter parameters per-block to save CPU, instead of per-sample
+current_hpf_hz = current_hpf_hz * 0.90 + target_hpf_hz * 0.10;
+current_hpf_hz > 21 ? (
+  update_hpf(current_hpf_hz, 0.707);
+);
 
 @sample
 current_gain = current_gain * smooth + target_gain * (1 - smooth);
 spl0 *= current_gain;
 spl1 *= current_gain;
+
+// HPF Processing
+current_hpf_hz > 21 ? (
+  out0 = hpf_b0*spl0 + hpf_b1*hpf_x1 + hpf_b2*hpf_x2 - hpf_a1*hpf_y1 - hpf_a2*hpf_y2;
+  hpf_x2 = hpf_x1; hpf_x1 = spl0;
+  hpf_y2 = hpf_y1; hpf_y1 = out0;
+  spl0 = out0;
+  
+  out1 = hpf_b0*spl1 + hpf_b1*hpf_rx1 + hpf_b2*hpf_rx2 - hpf_a1*hpf_ry1 - hpf_a2*hpf_ry2;
+  hpf_rx2 = hpf_rx1; hpf_rx1 = spl1;
+  hpf_ry2 = hpf_ry1; hpf_ry1 = out1;
+  spl1 = out1;
+);
 ]]
 
 local function install_jsfx()
@@ -57,7 +105,7 @@ end
 install_jsfx()
 
 -- Envelope helpers
-local function ensure_track_envelope(track, hunter_type)
+local function ensure_track_envelope(track, param_idx)
   local fx_name = "Floop Hunter.jsfx"
   local fx_idx = reaper.TrackFX_AddByName(track, fx_name, false, 1)
   if fx_idx < 0 then
@@ -81,11 +129,10 @@ local function ensure_track_envelope(track, hunter_type)
     fx_idx = target_pos
   end
 
-  local param_idx = 0
   return reaper.GetFXEnvelope(track, fx_idx, param_idx, true)
 end
 
-local function ensure_take_envelope(take, hunter_type)
+local function ensure_take_envelope(take, param_idx)
   if not reaper.TakeFX_GetEnvelope then
     reaper.MB("reaper.TakeFX_GetEnvelope API not available.\nPlease update Reaper to v6+ or use Track FX.",
       "Floop Hunter Error", 0)
@@ -100,11 +147,10 @@ local function ensure_take_envelope(take, hunter_type)
 
   if fx_idx < 0 then return nil end
 
-  local param_idx = 0
   return reaper.TakeFX_GetEnvelope(take, fx_idx, param_idx, true)
 end
 
-local function insert_reduction_points(env, t_start, t_end, reduction_db, pre_sec, post_sec, overwrite, shape)
+local function insert_reduction_points(env, t_start, t_end, target_val, pre_sec, post_sec, overwrite, shape, baseline_val)
   local pre = math.max(0, pre_sec)
   local post = math.max(0, post_sec)
   local env_shape = shape or 0
@@ -114,9 +160,8 @@ local function insert_reduction_points(env, t_start, t_end, reduction_db, pre_se
   local t3 = t_end
   local t4 = t_end + post
 
-  local v_current = 0.0
-  local dip = -math.abs(reduction_db)
-  local v_target = dip
+  local v_current = baseline_val or 0.0
+  local v_target = target_val
 
   if overwrite then
     reaper.DeleteEnvelopePointRange(env, t1, t4)
@@ -131,6 +176,127 @@ end
 Engine.ensure_track_envelope = ensure_track_envelope
 Engine.ensure_take_envelope = ensure_take_envelope
 Engine.insert_reduction_points = insert_reduction_points
+
+local function simplify_curve(points, eps)
+  local n = #points
+  if n <= 2 then return points end
+  local keep = {}
+  for i = 1, n do keep[i] = false end
+  keep[1] = true
+  keep[n] = true
+
+  local stack_a = { 1 }
+  local stack_b = { n }
+
+  while #stack_a > 0 do
+    local a = stack_a[#stack_a]
+    local b = stack_b[#stack_b]
+    stack_a[#stack_a] = nil
+    stack_b[#stack_b] = nil
+
+    local t1 = points[a].t
+    local v1 = points[a].v
+    local t2 = points[b].t
+    local v2 = points[b].v
+    local dt = t2 - t1
+
+    local max_dev = -1.0
+    local max_i = -1
+    for i = a + 1, b - 1 do
+      local ti = points[i].t
+      local vi = points[i].v
+      local vlin
+      if dt ~= 0 then
+        vlin = v1 + (v2 - v1) * ((ti - t1) / dt)
+      else
+        vlin = v1
+      end
+      local dev = math.abs(vi - vlin)
+      if dev > max_dev then
+        max_dev = dev
+        max_i = i
+      end
+    end
+
+    if max_i > 0 and max_dev > eps then
+      keep[max_i] = true
+      if (max_i - a) > 1 then
+        stack_a[#stack_a + 1] = a
+        stack_b[#stack_b + 1] = max_i
+      end
+      if (b - max_i) > 1 then
+        stack_a[#stack_a + 1] = max_i
+        stack_b[#stack_b + 1] = b
+      end
+    end
+  end
+
+  local out = {}
+  for i = 1, n do
+    if keep[i] then
+      out[#out + 1] = points[i]
+    end
+  end
+  return out
+end
+
+local function insert_hpf_curve(env, t_start, t_end, seg_points, pre_sec, post_sec, env_shape, base_hz, max_hz, strength_db)
+  local pre = math.max(0, pre_sec)
+  local post = math.max(0, post_sec)
+  local shape = env_shape or 0
+  local base = base_hz or 20.0
+  local maxv = max_hz or 500.0
+  local db = strength_db or 6.0
+  if db < 0 then db = 0 end
+  if db > 60 then db = 60 end
+  local intensity = db / 6.0
+
+  local t0 = math.max(0, t_start - pre)
+  local t4 = t_end + post
+
+  local pts = {}
+  for i = 1, #seg_points do
+    local pt = seg_points[i]
+    if pt and pt.offset_sec and pt.val then
+      local tt = t_start + pt.offset_sec
+      if tt < t_start then tt = t_start end
+      if tt > t_end then tt = t_end end
+      local vv = base + (pt.val - base) * intensity
+      if vv < base then vv = base end
+      if vv > maxv then vv = maxv end
+      pts[#pts + 1] = { t = tt, v = vv }
+    end
+  end
+
+  table.sort(pts, function(a, b) return a.t < b.t end)
+
+  if #pts == 0 then
+    reaper.InsertEnvelopePointEx(env, -1, t0, base, 0, 0, false, true)
+    reaper.InsertEnvelopePointEx(env, -1, t4, base, 0, 0, false, true)
+    return
+  end
+
+  if pts[1].t > t_start then
+    table.insert(pts, 1, { t = t_start, v = pts[1].v })
+  else
+    pts[1].t = t_start
+  end
+
+  if pts[#pts].t < t_end then
+    pts[#pts + 1] = { t = t_end, v = pts[#pts].v }
+  else
+    pts[#pts].t = t_end
+  end
+
+  local simplified = simplify_curve(pts, 0.75)
+
+  reaper.InsertEnvelopePointEx(env, -1, t0, base, 0, 0, false, true)
+  for i = 1, #simplified do
+    local p = simplified[i]
+    reaper.InsertEnvelopePointEx(env, -1, p.t, p.v, shape, 0, false, true)
+  end
+  reaper.InsertEnvelopePointEx(env, -1, t4, base, 0, 0, false, true)
+end
 
 -- Analysis (async)
 
@@ -167,16 +333,15 @@ function Engine.create_analysis_context(item, hunter, config_in)
   local N = math.max(64, math.floor(sr * (config.window_ms / 1000)))
   local H = math.max(32, math.floor(sr * (config.hop_ms / 1000)))
 
-  -- Pre-allocate buffer for hop-sized reads to reduce GC pressure.
   local buf = reaper.new_array(H * ch)
+  
+  if hunter then
+    Logger:set_target_hunter(hunter.name)
+  end
+  
   local state = hunter.init(sr, config)
   
-  local result_buf = {
-    level = 0, ratio = 0, zcr = 0, air_ratio = 0, air_db = 0,
-    chest_ratio = 0, air_conc = 0, hf_conc = 0, hf_tilt = 0,
-    low_ratio = 0, flat = 0, low_db = 0, high_db = 0,
-    diff_db = 0, crest_low = 0
-  }
+  local result_buf = {}
 
   return {
     take = take,
@@ -219,7 +384,7 @@ function Engine.create_analysis_context(item, hunter, config_in)
         self.buf.clear()
         reaper.GetAudioAccessorSamples(self.accessor, self.sr, self.ch, self.t_acc, self.H, self.buf)
 
-        -- Accumulate RMS
+        -- Accumulate RMS (only count unique samples, not overlapping windows)
         for i = 1, self.H * self.ch do
           local s = self.buf[i]
           self.sum_sq = self.sum_sq + s * s
@@ -237,14 +402,8 @@ function Engine.create_analysis_context(item, hunter, config_in)
             self.result_buf = res
         end
 
-        local FEATURE_KEYS = {
-          "level", "ratio", "zcr", "air_ratio", "air_db", "chest_ratio",
-          "air_conc", "hf_conc", "hf_tilt", "low_ratio", "flat", "low_db",
-          "high_db", "diff_db", "crest_low"
-        }
-
         for _, key in ipairs(FEATURE_KEYS) do
-          if self.result_buf[key] then
+          if self.result_buf[key] ~= nil then
             if not self.features_arrays[key] then self.features_arrays[key] = {} end
             self.features_arrays[key][self.idx] = self.result_buf[key]
           end
@@ -404,25 +563,27 @@ end
 
 -- Envelopes
 function Engine.apply_reduction(item, segments, config)
-  local env
-  local hunter_type = config.hunter_type or "Ess"
-
+  local env_gain, env_hpf
+  
   if config.use_take_fx then
     local take = reaper.GetActiveTake(item)
     if not take then return 0 end
-    env = ensure_take_envelope(take, hunter_type)
+    env_gain = ensure_take_envelope(take, 0)
+    env_hpf = ensure_take_envelope(take, 1)
   else
     local track = reaper.GetMediaItem_Track(item)
     if not track then return 0 end
-    env = ensure_track_envelope(track, hunter_type)
+    env_gain = ensure_track_envelope(track, 0)
+    env_hpf = ensure_track_envelope(track, 1)
   end
 
-  if not env then
+  if not env_gain or not env_hpf then
     reaper.MB("Could not create/find envelope for Floop Hunter.jsfx.", "Floop Hunter Error", 0)
     return 0
   end
 
-  reaper.Envelope_SortPoints(env)
+  reaper.Envelope_SortPoints(env_gain)
+  reaper.Envelope_SortPoints(env_hpf)
 
   local item_pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
   local item_len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
@@ -434,20 +595,17 @@ function Engine.apply_reduction(item, segments, config)
     if config.use_take_fx then
       local take = reaper.GetActiveTake(item)
       local play_rate = take and reaper.GetMediaItemTakeInfo_Value(take, "D_PLAYRATE") or 1.0
-      reaper.DeleteEnvelopePointRange(env, 0, item_len * play_rate + 1.0)
+      reaper.DeleteEnvelopePointRange(env_gain, 0, item_len * play_rate + 1.0)
+      reaper.DeleteEnvelopePointRange(env_hpf, 0, item_len * play_rate + 1.0)
     else
-      reaper.DeleteEnvelopePointRange(env, math.max(0, item_pos - pre_sec), item_pos + item_len + post_sec)
+      reaper.DeleteEnvelopePointRange(env_gain, math.max(0, item_pos - pre_sec), item_pos + item_len + post_sec)
+      reaper.DeleteEnvelopePointRange(env_hpf, math.max(0, item_pos - pre_sec), item_pos + item_len + post_sec)
     end
   end
 
   local shape = config.env_shape or 0
 
   for _, seg in ipairs(segments) do
-    local seg_db = seg.reduction_db
-    if seg_db == nil then
-      seg_db = config.reduction_db or 0
-    end
-
     local t_start = seg.start_time
     local t_end = seg.end_time
 
@@ -456,10 +614,19 @@ function Engine.apply_reduction(item, segments, config)
       t_end = t_end - item_pos
     end
 
-    insert_reduction_points(env, t_start, t_end, seg_db, pre_sec, post_sec, false, shape)
+    if seg.points and #seg.points > 0 then
+        local strength_db = seg.hpf_strength or seg.gain_db or seg.reduction_db or config.reduction_db or 6.0
+        insert_hpf_curve(env_hpf, t_start, t_end, seg.points, pre_sec, post_sec, shape, 20.0, 500.0, strength_db)
+    else
+        -- This is a Gain envelope for Ess/Breath/Unified default
+        local seg_val = seg.gain_db or seg.reduction_db or config.reduction_db or 0
+        seg_val = -math.abs(seg_val)
+        insert_reduction_points(env_gain, t_start, t_end, seg_val, pre_sec, post_sec, false, shape, 0)
+    end
   end
 
-  reaper.Envelope_SortPoints(env)
+  reaper.Envelope_SortPoints(env_gain)
+  reaper.Envelope_SortPoints(env_hpf)
   return #segments
 end
 
@@ -478,20 +645,84 @@ function Engine.process_selection(hunter, config)
 
   local total_segments = 0
 
+  local function sanitize_csv_field(s)
+    s = tostring(s or "")
+    s = s:gsub("[\r\n]", " ")
+    s = s:gsub(",", "_")
+    return s
+  end
+
+  local function get_item_file_id(item)
+    local take = reaper.GetActiveTake(item)
+    if take then
+      local src = reaper.GetMediaItemTake_Source(take)
+      if src and reaper.GetMediaSourceFileName then
+        local _, fn = reaper.GetMediaSourceFileName(src, "")
+        if fn and fn ~= "" then
+          local base = fn:match("([^/\\]+)$") or fn
+          if base and base ~= "" then return sanitize_csv_field(base) end
+        end
+      end
+      if reaper.GetTakeName then
+        local tn = reaper.GetTakeName(take)
+        if tn and tn ~= "" then return sanitize_csv_field(tn) end
+      end
+    end
+    local _, guid = reaper.GetSetMediaItemInfo_String(item, "GUID", "", false)
+    return sanitize_csv_field(guid)
+  end
+
   for i = 0, cnt - 1 do
     local item = reaper.GetSelectedMediaItem(0, i)
+    local item_pos_proj = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+    local file_id = get_item_file_id(item)
     local features, time_map = Engine.analyze_item(item, hunter, config)
 
     if features and features.level and #features.level > 0 then
       local segments_idx, stats = hunter.detect_segments(features, config)
+      local profile_id = tonumber(config.source_profile or 0) or 0
+
+      if hunter then
+        Logger:set_target_hunter(hunter.name)
+        Logger:debug(string.format("EVAL_FILE | file_id:%s | profile:%d", file_id, profile_id))
+        if stats and stats.rejected then
+          for _, r in ipairs(stats.rejected) do
+            local t1 = time_map[r.start_idx]
+            local t2 = time_map[r.end_idx]
+            if t1 and t2 then
+              local t_end_real = t2 + (config.hop_ms / 1000)
+              local s_ms = math.floor(((t1 - item_pos_proj) * 1000) + 0.5)
+              local e_ms = math.floor(((t_end_real - item_pos_proj) * 1000) + 0.5)
+              Logger:csv(string.format("%s,%d,%d,%d,%s", file_id, profile_id, s_ms, e_ms, "rej_" .. tostring(r.reason or "unk")))
+            end
+          end
+        end
+      end
 
       local segments_time = {}
+      local csv_label = "det_generic"
+      if hunter and hunter.name == "Breath Hunter" then csv_label = "det_breath_inhale"
+      elseif hunter and hunter.name == "Ess Hunter" then csv_label = "det_ess"
+      elseif hunter and hunter.name == "Plosive Hunter" then csv_label = "det_plosive" end
+
       for _, seg in ipairs(segments_idx) do
         local t1 = time_map[seg.start_idx]
         local t2 = time_map[seg.end_idx]
         if t1 and t2 then
           local t_end_real = t2 + (config.hop_ms / 1000)
-          table.insert(segments_time, { start_time = t1, end_time = t_end_real })
+          table.insert(segments_time, { 
+            start_time = t1, 
+            end_time = t_end_real,
+            points = seg.points,
+            target_hz = seg.target_hz,
+            gain_db = seg.gain_db
+          })
+
+          if hunter then
+            local s_ms = math.floor(((t1 - item_pos_proj) * 1000) + 0.5)
+            local e_ms = math.floor(((t_end_real - item_pos_proj) * 1000) + 0.5)
+            Logger:csv(string.format("%s,%d,%d,%d,%s", file_id, profile_id, s_ms, e_ms, csv_label))
+          end
         end
       end
 

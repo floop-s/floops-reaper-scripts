@@ -34,7 +34,7 @@ end
 -- Cache key for analysis-critical parameters (feature extraction only).
 function Cache.get_params_hash(config, hunter_name)
     local keys = { "source_profile", "window_ms", "hop_ms", "low_pass" }
-    local parts = { hunter_name .. "_v2.1" }
+    local parts = { hunter_name .. "_v2.3" }
     for _, k in ipairs(keys) do
         if config[k] ~= nil then
             table.insert(parts, k .. ":" .. tostring(config[k]))

@@ -1,6 +1,6 @@
 # Floop Scratchpad
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-2.1.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-2.1.1-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 **Track Notes System for REAPER.**
 
@@ -89,6 +89,9 @@ The easiest way to install and keep the script updated is via **ReaPack**.
    *   Future instances will automatically embed themselves in the track panel!
 
 ## Changelog
+
+### v2.1.1
+* **UX Improved:** Remembers the last used Text Size when switching to tracks without saved state.
 
 ### v2.1.0
 * **UX Improved:** Added workflow shortcuts to speed up saving/closing (`Ctrl/Cmd+S`, `Ctrl/Cmd+Enter`, `ESC`).

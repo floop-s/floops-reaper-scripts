@@ -1,6 +1,6 @@
 # Floop Hunter Framework
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.0.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.1.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 **Automatic vocal cleanup for REAPER ,detects and reduces sibilance, plosives, and breaths with precision volume automation.**
 
@@ -9,6 +9,8 @@
 **Floop Hunter Framework** is an advanced, multi-module automation writer designed to automatically clean up vocal recordings. It listens to selected vocal tracks, detects artifacts (Sibilants, Plosives, and Breaths) using source-specific profiles, and writes precise volume automation to reduce them non-destructively.
 
 By utilizing a unified JSFX plugin, it ensures that overlapping detections (e.g., a breath colliding with a plosive) are merged cleanly, preventing double-automation and keeping your envelope perfectly organized.
+
+This script is designed as a *workflow accelerator and an interactive editor*, not a magical 100% accurate one-click solution. Automated detection is never perfect. Its purpose is to rapidly find artifact candidates and provide you with a visual editor to quickly confirm, delete, or adjust the automation, saving you hours of tedious manual clicking and zooming. Treat the script's output as a highly advanced starting point. It does the heavy lifting, but your ears remain the final judge. Always review the automation before committing to a mix.
 
 
 
@@ -114,15 +116,19 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 8.  **Fine-Tuning**: Enable **Auto Scan** to re-detect instantly when changing selection, and **Live Edit** to automatically rewrite the envelope on the timeline whenever you adjust a slider. Use the **Visualizer** to draw custom points, resize edges, or delete false positives.
 
 
-## ⚠️ Limitations & Expectations 
 
-
-Automated detection is never perfect. Floop Hunter Framework speeds up vocal editing but does not replace careful listening.False positives (automation written on events that are not actually problematic) are always possible, especially on unusual vocal performances, heavily processed sources, or noisy recordings. False negatives (missed artifacts) are also possible, particularly for subtle or atypical events. The automation written by this script is a starting point, not a finished result. Always listen back with the automation active before committing to a mix.
 
 
 
 ## Changelog
 
+### v1.1.0
+* **Major Overhaul**: Complete rewrite of the Plosive Hunter and Breath Hunter DSP engines for extreme accuracy.
+* **Redefined Logic**: Significant optimization and redefinition of the Ess Hunter.
+* **Acoustic Profiles**: Introduced source-specific Acoustic Profiles (Female, Male, Spoken, Rap) combined with dynamic Macro-Sliders, replacing the old rigid preset system.
+* **Dual-Envelope Routing (JSFX Upgrade)**: Upgraded the companion JSFX and routing engine to completely separate Plosives (which now use a dedicated High-Pass Filter envelope) from Ess/Breaths (which use a Gain envelope). This eliminates destructive overlaps between fundamentally different artifact treatments.
+* **Custom Presets**: Introduced a robust User Preset save/load system via Reaper ExtState.
+* **UI Optimizations**: Refined the waveform visualizer controls and reorganized the interface layout for maximum screen efficiency.
 
 ### v1.0.0
 * Initial Release.

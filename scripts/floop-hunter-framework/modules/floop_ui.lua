@@ -113,23 +113,197 @@ end
 
 local apply_reduction -- forward declare
 
+local function apply_active_hunter_only()
+  local cache, hunter, item_res = get_active_cache_for_selected_item()
+  if not item_res then return end
+
+  if not cache or not cache.segments then
+    scan_item()
+    return
+  end
+
+  local segments_time = {}
+  local tmap = cache.time or {}
+  local hop_sec = (tmap[2] and tmap[1]) and (tmap[2] - tmap[1]) or ((UI.config.hop_ms or 10) / 1000)
+  if hop_sec <= 0 then hop_sec = (UI.config.hop_ms or 10) / 1000 end
+
+  for _, seg in ipairs(cache.segments) do
+    local t1 = tmap[seg.start_idx]
+    local t2 = tmap[seg.end_idx]
+    if t1 and t2 then
+      local t_end_real = t2 + hop_sec
+      if seg.points and #seg.points > 0 then
+        segments_time[#segments_time + 1] = {
+          start_time = t1,
+          end_time = t_end_real,
+          points = seg.points,
+          hpf_strength = seg.hpf_strength,
+          hunter_name = hunter and hunter.name or nil
+        }
+      else
+        local db = seg.gain_db or (UI.config.reduction_db or 6.0)
+        segments_time[#segments_time + 1] = {
+          start_time = t1,
+          end_time = t_end_real,
+          reduction_db = db,
+          gain_db = db,
+          hunter_name = hunter and hunter.name or nil
+        }
+      end
+    end
+  end
+
+  if #segments_time == 0 then return end
+
+  reaper.Undo_BeginBlock()
+
+  local env_gain, env_hpf
+  if UI.config.use_take_fx then
+    local take = reaper.GetActiveTake(item_res)
+    if take then
+      env_gain = Engine.ensure_take_envelope(take, 0)
+      env_hpf = Engine.ensure_take_envelope(take, 1)
+    end
+  else
+    local track = reaper.GetMediaItem_Track(item_res)
+    if track then
+      env_gain = Engine.ensure_track_envelope(track, 0)
+      env_hpf = Engine.ensure_track_envelope(track, 1)
+    end
+  end
+
+  local item_pos = reaper.GetMediaItemInfo_Value(item_res, "D_POSITION")
+  local item_len = reaper.GetMediaItemInfo_Value(item_res, "D_LENGTH")
+  local pre = (UI.config.pre_ramp_ms or 10) / 1000
+  local post = (UI.config.post_ramp_ms or 20) / 1000
+  local t_start = math.max(0, item_pos - pre)
+  local t_end = item_pos + item_len + post
+
+  if hunter and hunter.name == "Plosive Hunter" then
+    if env_hpf then
+      if UI.config.use_take_fx then
+        local take = reaper.GetActiveTake(item_res)
+        local play_rate = take and reaper.GetMediaItemTakeInfo_Value(take, "D_PLAYRATE") or 1.0
+        reaper.DeleteEnvelopePointRange(env_hpf, 0, item_len * play_rate + 1.0)
+      else
+        reaper.DeleteEnvelopePointRange(env_hpf, t_start, t_end)
+      end
+      reaper.Envelope_SortPoints(env_hpf)
+    end
+  else
+    if env_gain then
+      if UI.config.use_take_fx then
+        local take = reaper.GetActiveTake(item_res)
+        local play_rate = take and reaper.GetMediaItemTakeInfo_Value(take, "D_PLAYRATE") or 1.0
+        reaper.DeleteEnvelopePointRange(env_gain, 0, item_len * play_rate + 1.0)
+      else
+        reaper.DeleteEnvelopePointRange(env_gain, t_start, t_end)
+      end
+      reaper.Envelope_SortPoints(env_gain)
+    end
+  end
+
+  local cfg = {}
+  for k, v in pairs(UI.config) do cfg[k] = v end
+  cfg.overwrite = false
+  Engine.apply_reduction(item_res, segments_time, cfg)
+  reaper.Undo_EndBlock("Floop Hunter: Live Edit", -1)
+  reaper.UpdateArrange()
+end
+
 local function apply_live_edit()
   if not UI.config.live_edit then return end
-  apply_reduction()
+  apply_active_hunter_only()
 end
 
 UI.apply_live_edit = apply_live_edit
 
+local function sanitize_csv_field(s)
+  s = tostring(s or "")
+  s = s:gsub("[\r\n]", " ")
+  s = s:gsub(",", "_")
+  return s
+end
+
+local function get_take_file_id(take)
+  if not take then return "unknown" end
+  local src = reaper.GetMediaItemTake_Source(take)
+  if src and reaper.GetMediaSourceFileName then
+    local _, fn = reaper.GetMediaSourceFileName(src, "")
+    if fn and fn ~= "" then
+      local base = fn:match("([^/\\]+)$") or fn
+      if base and base ~= "" then return sanitize_csv_field(base) end
+    end
+  end
+  if reaper.GetTakeName then
+    local tn = reaper.GetTakeName(take)
+    if tn and tn ~= "" then return sanitize_csv_field(tn) end
+  end
+  return "unknown"
+end
+
+local function export_eval(cache_entry, hunter, segments, stats)
+  if not cache_entry or not hunter then return end
+  local time_map = cache_entry.time
+  if not time_map then return end
+
+  Logger:set_target_hunter(hunter.name)
+
+  local profile_id = tonumber(UI.config.source_profile or 0) or 0
+  local file_id = sanitize_csv_field(cache_entry.file_id or cache_entry.item_guid or "unknown")
+  local item_pos = cache_entry.item_pos or 0.0
+  local hop_sec = (UI.config.hop_ms or 10) / 1000.0
+
+  Logger:csv(string.format("%s,%d,%d,%d,%s", file_id, profile_id, 0, 0, "eval_start"))
+
+  local csv_label = "det_generic"
+  if hunter.name == "Breath Hunter" then csv_label = "det_breath_inhale"
+  elseif hunter.name == "Ess Hunter" then csv_label = "det_ess"
+  elseif hunter.name == "Plosive Hunter" then csv_label = "det_plosive" end
+
+  if segments then
+    for _, seg in ipairs(segments) do
+      local t1 = time_map[seg.start_idx]
+      local t2 = time_map[seg.end_idx]
+      if t1 and t2 then
+        local t_end_real = t2 + hop_sec
+        local s_ms = math.floor(((t1 - item_pos) * 1000) + 0.5)
+        local e_ms = math.floor(((t_end_real - item_pos) * 1000) + 0.5)
+        Logger:csv(string.format("%s,%d,%d,%d,%s", file_id, profile_id, s_ms, e_ms, csv_label))
+      end
+    end
+  end
+
+  if stats and stats.rejected then
+    for _, r in ipairs(stats.rejected) do
+      local t1 = time_map[r.start_idx]
+      local t2 = time_map[r.end_idx]
+      if t1 and t2 then
+        local t_end_real = t2 + hop_sec
+        local s_ms = math.floor(((t1 - item_pos) * 1000) + 0.5)
+        local e_ms = math.floor(((t_end_real - item_pos) * 1000) + 0.5)
+        Logger:csv(string.format("%s,%d,%d,%d,%s", file_id, profile_id, s_ms, e_ms, "rej_" .. tostring(r.reason or "unk")))
+      end
+    end
+  end
+
+  Logger:csv(string.format("%s,%d,%d,%d,%s", file_id, profile_id, 0, 0, "eval_end"))
+end
+
 local function re_detect(cache_entry, hunter)
   if not hunter then hunter = UI.hunters[UI.active_hunter_idx] end
-  local segments = hunter.detect_segments(cache_entry.features, UI.config)
+  local segments, stats = hunter.detect_segments(cache_entry.features, UI.config)
   cache_entry.segments = segments
+  cache_entry.stats = stats
+  export_eval(cache_entry, hunter, segments, stats)
 
   -- Apply default gain if missing
   local base_reduction = UI.config.reduction_db or 6.0
   for i = 1, #cache_entry.segments do
     local seg = cache_entry.segments[i]
-    if seg.gain_db == nil then
+    if seg.points and #seg.points > 0 then
+      if seg.hpf_strength == nil then seg.hpf_strength = base_reduction end
+    elseif seg.gain_db == nil then
       seg.gain_db = base_reduction
     end
   end
@@ -316,12 +490,14 @@ local function draw_waveform_panel()
     cache.create_drag_active = cache.create_drag_active or false
     cache.create_drag_start_t = cache.create_drag_start_t or nil
     cache.right_click_consumed = false
+    local hop_sec_cache = (cache.time and cache.time[2] and cache.time[1]) and (cache.time[2] - cache.time[1]) or ((UI.config.hop_ms or 10) / 1000)
+    if hop_sec_cache <= 0 then hop_sec_cache = (UI.config.hop_ms or 10) / 1000 end
 
     for i = 1, #cache.segments do
       local s = cache.segments[i]
       local t_s = cache.time[s.start_idx]
-      local hop_sec = (UI.config.hop_ms or 10) / 1000
-      local t_e = cache.time[s.end_idx] + hop_sec
+      local t_e = cache.time[s.end_idx] + hop_sec_cache
+      local is_plosive_seg = (hunter and hunter.name == "Plosive Hunter") and (s.points and #s.points > 0)
 
       local x1 = x0 + ((math.max(t_s, vis_t0) - vis_t0) / vis_len) * W
       local x2 = x0 + ((math.min(t_e, vis_t1) - vis_t0) / vis_len) * W
@@ -346,7 +522,7 @@ local function draw_waveform_panel()
           if reaper.ImGui_IsMouseClicked(UI.ctx, 0) then
             cache.drag_seg_vol_index = i
             cache.drag_vol_start_y = my
-            cache.drag_vol_start_val = s.gain_db or (UI.config.reduction_db or 6.0)
+            cache.drag_vol_start_val = (is_plosive_seg and (s.hpf_strength or (UI.config.reduction_db or 6.0))) or (s.gain_db or (UI.config.reduction_db or 6.0))
           end
           if reaper.ImGui_IsMouseClicked(UI.ctx, 1) then
             table.remove(cache.segments, i)
@@ -374,7 +550,11 @@ local function draw_waveform_panel()
             local new_db = cache.drag_vol_start_val + delta_db
             if new_db < 0 then new_db = 0 end
             if new_db > 24 then new_db = 24 end
-            s.gain_db = new_db
+            if is_plosive_seg then
+              s.hpf_strength = new_db
+            else
+              s.gain_db = new_db
+            end
           else
             cache.drag_seg_vol_index = nil
             cache.drag_vol_start_y = nil
@@ -386,8 +566,9 @@ local function draw_waveform_panel()
         local handle_col = (is_handle_hovered or is_dragging) and 0xFFFFFFFF or 0xBFC7CDAA
         reaper.ImGui_DrawList_AddRectFilled(dl, h_x1, h_y1, h_x2, h_y2, handle_col, 2.0)
 
-        if s.gain_db then
-          local txt = string.format('%.1f', s.gain_db)
+        local shown = is_plosive_seg and s.hpf_strength or s.gain_db
+        if shown then
+          local txt = string.format('%.1f', shown)
           reaper.ImGui_DrawList_AddText(dl, h_x1, h_y1 - 14, 0xFFFFFFCC, txt)
         end
 
@@ -398,17 +579,23 @@ local function draw_waveform_panel()
               cache.drag_seg_edge_side = 0
             end
             if cache.drag_seg_edge_index < 0 and cache.drag_seg_edge_side == 0 then
-              if math.abs(mx - x1) <= 6 then
-                reaper.ImGui_SetMouseCursor(UI.ctx, reaper.ImGui_MouseCursor_ResizeEW())
-                if reaper.ImGui_IsMouseDown(UI.ctx, 0) then
-                  cache.drag_seg_edge_index = i
-                  cache.drag_seg_edge_side = 1
-                end
-              elseif math.abs(mx - x2) <= 6 then
-                reaper.ImGui_SetMouseCursor(UI.ctx, reaper.ImGui_MouseCursor_ResizeEW())
-                if reaper.ImGui_IsMouseDown(UI.ctx, 0) then
-                  cache.drag_seg_edge_index = i
-                  cache.drag_seg_edge_side = 2
+              if ctrl_down then
+                if math.abs(mx - x1) <= 6 then
+                  reaper.ImGui_SetMouseCursor(UI.ctx, reaper.ImGui_MouseCursor_ResizeEW())
+                  if reaper.ImGui_IsMouseDown(UI.ctx, 0) then
+                    cache.drag_seg_edge_index = i
+                    cache.drag_seg_edge_side = 1
+                    cache.drag_edge_orig_start_idx = s.start_idx
+                    cache.drag_edge_orig_end_idx = s.end_idx
+                  end
+                elseif math.abs(mx - x2) <= 6 then
+                  reaper.ImGui_SetMouseCursor(UI.ctx, reaper.ImGui_MouseCursor_ResizeEW())
+                  if reaper.ImGui_IsMouseDown(UI.ctx, 0) then
+                    cache.drag_seg_edge_index = i
+                    cache.drag_seg_edge_side = 2
+                    cache.drag_edge_orig_start_idx = s.start_idx
+                    cache.drag_edge_orig_end_idx = s.end_idx
+                  end
                 end
               end
             end
@@ -420,16 +607,14 @@ local function draw_waveform_panel()
             local rel = (mx - x0) / W
               if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
               local new_t = vis_t0 + rel * vis_len
-              local hop_sec = (UI.config.hop_ms or 10) / 1000
-              if hop_sec > 0 then
-                local rel_pos = (new_t - cache.item_pos) / hop_sec
-                local snapped = math.floor(rel_pos + 0.5) * hop_sec + cache.item_pos
+              if hop_sec_cache > 0 then
+                local rel_pos = (new_t - cache.item_pos) / hop_sec_cache
+                local snapped = math.floor(rel_pos + 0.5) * hop_sec_cache + cache.item_pos
                 new_t = snapped
               end
               local idx = 1
-              local hop_sec_idx = (UI.config.hop_ms or 10) / 1000
-              if hop_sec_idx > 0 then
-                local approx = math.floor((new_t - cache.item_pos) / hop_sec_idx + 0.5) + 1
+              if hop_sec_cache > 0 then
+                local approx = math.floor((new_t - cache.item_pos) / hop_sec_cache + 0.5) + 1
                 if approx < 1 then approx = 1 end
                 if approx > #cache.time then approx = #cache.time end
                 idx = approx
@@ -440,8 +625,27 @@ local function draw_waveform_panel()
                 s.end_idx = math.max(idx, s.start_idx + 1)
               end
               if not reaper.ImGui_IsMouseDown(UI.ctx, 0) then
+                if (hunter and hunter.name == "Plosive Hunter") and (s.points and #s.points > 0) and cache.drag_edge_orig_start_idx and cache.time then
+                  local t_old = cache.time[cache.drag_edge_orig_start_idx]
+                  local t_new = cache.time[s.start_idx]
+                  local t_end = cache.time[s.end_idx] + hop_sec_cache
+                  if t_old and t_new and t_end and t_end > t_new then
+                    local new_points = {}
+                    for p = 1, #s.points do
+                      local pt = s.points[p]
+                      local abs_t = t_old + (pt.offset_sec or 0.0)
+                      local off = abs_t - t_new
+                      if off >= 0 and off <= (t_end - t_new) then
+                        new_points[#new_points + 1] = { offset_sec = off, val = pt.val }
+                      end
+                    end
+                    s.points = new_points
+                  end
+                end
                 cache.drag_seg_edge_index = nil
                 cache.drag_seg_edge_side = 0
+                cache.drag_edge_orig_start_idx = nil
+                cache.drag_edge_orig_end_idx = nil
                 apply_live_edit() 
               end
             end
@@ -479,11 +683,10 @@ local function draw_waveform_panel()
           local t_end = vis_t0 + cursor_frac * vis_len
           local t1 = math.min(cache.create_drag_start_t or t_end, t_end)
           local t2 = math.max(cache.create_drag_start_t or t_end, t_end)
-          local hop_sec = (UI.config.hop_ms or 10) / 1000
           local min_len_sec = ((UI.config.min_seg_ms or 15) / 1000)
-          if (t2 - t1) >= min_len_sec and hop_sec > 0 then
+          if (t2 - t1) >= min_len_sec and hop_sec_cache > 0 then
             local function time_to_index(t)
-              local rel_pos = (t - cache.item_pos) / hop_sec
+              local rel_pos = (t - cache.item_pos) / hop_sec_cache
               local approx = math.floor(rel_pos + 0.5) + 1
               if approx < 1 then approx = 1 end
               if approx > #cache.time then approx = #cache.time end
@@ -492,11 +695,26 @@ local function draw_waveform_panel()
             local start_idx = time_to_index(t1)
             local end_idx = time_to_index(t2)
             if end_idx > start_idx then
-              local seg = {
-                start_idx = start_idx,
-                end_idx = end_idx,
-                gain_db = UI.config.reduction_db or 6.0
-              }
+              local seg
+              if hunter and hunter.name == "Plosive Hunter" then
+                local dur = (end_idx - start_idx) * hop_sec_cache
+                if dur < 0 then dur = 0 end
+                seg = {
+                  start_idx = start_idx,
+                  end_idx = end_idx,
+                  hpf_strength = UI.config.reduction_db or 6.0,
+                  points = {
+                    { offset_sec = 0.0, val = 80.0 },
+                    { offset_sec = dur, val = 80.0 }
+                  }
+                }
+              else
+                seg = {
+                  start_idx = start_idx,
+                  end_idx = end_idx,
+                  gain_db = UI.config.reduction_db or 6.0
+                }
+              end
               table.insert(cache.segments, seg)
               apply_live_edit() 
             end
@@ -548,46 +766,72 @@ apply_reduction = function()
   end
 
   local guid = cache.item_guid
-  local all_segments_to_apply = {}
+  local gain_segments_to_apply = {}
+  local hpf_segments_to_apply = {}
   
   for i, h in ipairs(UI.hunters) do
       local c = Cache.get(guid, h.name)
       if c and c.segments and #c.segments > 0 then
+          local hop_sec = (c.time and c.time[2] and c.time[1]) and (c.time[2] - c.time[1]) or ((UI.config.hop_ms or 10) / 1000)
+          if hop_sec <= 0 then hop_sec = (UI.config.hop_ms or 10) / 1000 end
           for _, seg in ipairs(c.segments) do
              local t1 = c.time[seg.start_idx]
              local t2 = c.time[seg.end_idx]
              if t1 and t2 then
-                 local t_end_real = t2 + (UI.config.hop_ms / 1000)
+                 local t_end_real = t2 + hop_sec
                  
                  local db = seg.gain_db or 6.0
-                 
-                 table.insert(all_segments_to_apply, {
-                     start_time = t1,
-                     end_time = t_end_real,
-                     reduction_db = db,
-                     hunter_name = h.name
-                 })
+                 if seg.points and #seg.points > 0 then
+                     table.insert(hpf_segments_to_apply, {
+                         start_time = t1,
+                         end_time = t_end_real,
+                         points = seg.points,
+                         hpf_strength = seg.hpf_strength,
+                         hunter_name = h.name
+                     })
+                 else
+                     table.insert(gain_segments_to_apply, {
+                         start_time = t1,
+                         end_time = t_end_real,
+                         reduction_db = db,
+                         gain_db = db,
+                         hunter_name = h.name
+                     })
+                 end
              end
           end
       end
   end
   
-  local resolved_segments = Engine.resolve_overlaps(all_segments_to_apply)
+  local resolved_gain = Engine.resolve_overlaps(gain_segments_to_apply)
+  local resolved_segments = {}
+  for _, seg in ipairs(resolved_gain) do
+      resolved_segments[#resolved_segments + 1] = seg
+  end
+  for _, seg in ipairs(hpf_segments_to_apply) do
+      resolved_segments[#resolved_segments + 1] = seg
+  end
 
   UI.config.hunter_type = "Unified"
   
   reaper.Undo_BeginBlock()
   
-  local env_to_clear
+  local env_gain, env_hpf
   if UI.config.use_take_fx then
     local take = reaper.GetActiveTake(item_res)
-    if take then env_to_clear = Engine.ensure_take_envelope(take, "Unified") end
+    if take then 
+      env_gain = Engine.ensure_take_envelope(take, 0) 
+      env_hpf = Engine.ensure_take_envelope(take, 1) 
+    end
   else
     local track = reaper.GetMediaItem_Track(item_res)
-    if track then env_to_clear = Engine.ensure_track_envelope(track, "Unified") end
+    if track then 
+      env_gain = Engine.ensure_track_envelope(track, 0) 
+      env_hpf = Engine.ensure_track_envelope(track, 1) 
+    end
   end
 
-  if env_to_clear then
+  if env_gain then
     local item_pos = reaper.GetMediaItemInfo_Value(item_res, "D_POSITION")
     local item_len = reaper.GetMediaItemInfo_Value(item_res, "D_LENGTH")
     local pre = (UI.config.pre_ramp_ms or 10) / 1000
@@ -595,11 +839,14 @@ apply_reduction = function()
     
     if UI.config.use_take_fx then
       local play_rate = reaper.GetMediaItemTakeInfo_Value(reaper.GetActiveTake(item_res), "D_PLAYRATE")
-      reaper.DeleteEnvelopePointRange(env_to_clear, 0, item_len * play_rate + 1.0)
+      reaper.DeleteEnvelopePointRange(env_gain, 0, item_len * play_rate + 1.0)
+      if env_hpf then reaper.DeleteEnvelopePointRange(env_hpf, 0, item_len * play_rate + 1.0) end
     else
-      reaper.DeleteEnvelopePointRange(env_to_clear, math.max(0, item_pos - pre), item_pos + item_len + post)
+      reaper.DeleteEnvelopePointRange(env_gain, math.max(0, item_pos - pre), item_pos + item_len + post)
+      if env_hpf then reaper.DeleteEnvelopePointRange(env_hpf, math.max(0, item_pos - pre), item_pos + item_len + post) end
     end
-    reaper.Envelope_SortPoints(env_to_clear)
+    reaper.Envelope_SortPoints(env_gain)
+    if env_hpf then reaper.Envelope_SortPoints(env_hpf) end
   end
 
   Engine.apply_reduction(item_res, resolved_segments, UI.config)
@@ -691,7 +938,7 @@ local function DrawHelpModal()
                 reaper.ImGui_TextWrapped(ctx, 'The waveform visualizer is fully interactive and allows you to manually correct the detections:')
                 reaper.ImGui_BulletText(ctx, 'Zoom / Pan: Use Mousewheel to zoom and Right-Click Drag to pan the waveform.')
                 reaper.ImGui_BulletText(ctx, 'Adjust Gain: Click and drag vertically on a segment to change its specific reduction (dB).')
-                reaper.ImGui_BulletText(ctx, 'Resize Segments: Hover the edges of a segment to drag and resize it.')
+                reaper.ImGui_BulletText(ctx, 'Resize Segments: Hold CTRL and click the edges of a segment to drag and resize it.')
                 reaper.ImGui_BulletText(ctx, 'Delete False Positives: Right-click directly on a segment to delete it.')
                 reaper.ImGui_BulletText(ctx, 'Add New Segments: Hold CTRL and Right-Click Drag over an area to create a custom reduction segment manually.')
                 reaper.ImGui_BulletText(ctx, 'Seek: Left-click anywhere on the empty waveform to move REAPER\'s edit cursor.')
@@ -707,9 +954,9 @@ local function DrawHelpModal()
                 reaper.ImGui_Separator(ctx)
                 reaper.ImGui_Spacing(ctx)
                 
-                reaper.ImGui_Text(ctx, 'DISCLAIMER')
+                reaper.ImGui_Text(ctx, 'THE PHILOSOPHY')
                 reaper.ImGui_TextWrapped(ctx,
-                    'This script accelerates a part of the editing workflow — it does not replace careful listening. False positives (automation written on events that are not actually problematic) are always possible, especially on unusual vocal performances, heavily processed sources, or noisy recordings. False negatives (missed artifacts) are also possible, particularly for subtle or atypical events. The automation written by this script is a starting point, not a finished result. Always listen back with the automation active before committing to a mix.')
+                    'This script is designed as a workflow accelerator and an interactive editor, not a magical 100% accurate one-click solution. Automated detection is never perfect. Its purpose is to rapidly find artifact candidates and provide you with a visual editor to quickly confirm, delete, or adjust the automation, saving you hours of tedious manual clicking and zooming. False positives and false negatives are inevitable, especially on unusual or heavily processed vocals. Treat the script\'s output as a highly advanced starting point. It does the heavy lifting, but your ears remain the final judge. Always review the automation before committing to a mix.')
                 reaper.ImGui_Spacing(ctx)
                 reaper.ImGui_Separator(ctx)
                 reaper.ImGui_Spacing(ctx)
@@ -851,29 +1098,29 @@ local function reset_envelopes()
   local t_start = math.max(0, item_pos - pre)
   local t_end = item_pos + item_len + post
 
-  local env_hunter, env_unified
+  local env_hunter, env_unified_gain, env_unified_hpf
   if UI.config.use_take_fx then
     local take = reaper.GetActiveTake(item)
     if take then 
-      env_hunter = Engine.ensure_take_envelope(take, hunter.name)
-      env_unified = Engine.ensure_take_envelope(take, "Unified")
+      env_unified_gain = Engine.ensure_take_envelope(take, 0)
+      env_unified_hpf = Engine.ensure_take_envelope(take, 1)
     end
   else
     local track = reaper.GetMediaItem_Track(item)
     if track then 
-      env_hunter = Engine.ensure_track_envelope(track, hunter.name)
-      env_unified = Engine.ensure_track_envelope(track, "Unified")
+      env_unified_gain = Engine.ensure_track_envelope(track, 0)
+      env_unified_hpf = Engine.ensure_track_envelope(track, 1)
     end
   end
 
   reaper.Undo_BeginBlock()
-  if env_hunter then
-    reaper.DeleteEnvelopePointRange(env_hunter, t_start, t_end)
-    reaper.Envelope_SortPoints(env_hunter)
+  if env_unified_gain then
+    reaper.DeleteEnvelopePointRange(env_unified_gain, t_start, t_end)
+    reaper.Envelope_SortPoints(env_unified_gain)
   end
-  if env_unified then
-    reaper.DeleteEnvelopePointRange(env_unified, t_start, t_end)
-    reaper.Envelope_SortPoints(env_unified)
+  if env_unified_hpf then
+    reaper.DeleteEnvelopePointRange(env_unified_hpf, t_start, t_end)
+    reaper.Envelope_SortPoints(env_unified_hpf)
   end
   reaper.Undo_EndBlock("Floop Hunter Reset Envelopes: " .. hunter.name, -1)
   reaper.UpdateArrange()
@@ -893,6 +1140,7 @@ function UI.draw()
       local params_hash = UI.analysis_ctx.params_hash
       local item_pos = UI.analysis_ctx.item_pos
       local item_len = UI.analysis_ctx.item_len
+      local file_id = get_take_file_id(UI.analysis_ctx.take)
 
   if hunter.name == "Plosive Hunter" then
       -- Visual-only mapping for the waveform: Plosive uses diff_db instead of ratio.
@@ -912,6 +1160,7 @@ function UI.draw()
     item_pos = item_pos,
     item_len = item_len,
     item_guid = guid,
+    file_id = file_id,
     amp = {}
   }
       -- Pre-calculate amp for visualizer
@@ -985,7 +1234,6 @@ function UI.draw()
         set_active_hunter(i, h)
         UI.selected_presets = UI.selected_presets or {}
         UI.selected_preset_name = UI.selected_presets[h.name] or "Default"
-      Logger:debug(string.format("UI_HUNTER | active:%s | profile:%d", tostring(h.name), tonumber(UI.config.source_profile or 0)))
       end
       if i < #UI.hunters then
         reaper.ImGui_SameLine(ctx)
@@ -996,7 +1244,7 @@ function UI.draw()
     reaper.ImGui_Dummy(ctx, 18, 1)
     reaper.ImGui_SameLine(ctx)
 
-    local source_profiles = { "Select Profile...", "Female Vocal", "Male Vocal", "Spoken", "Rap" }
+    local source_profiles = { "Select Profile...", "Female Vocal", "Male Vocal", "Spoken Male", "Spoken Female", "Rap" }
     local sp_idx = (UI.config.source_profile or 0) + 1
     if sp_idx < 1 then sp_idx = 1 end
     if sp_idx > #source_profiles then sp_idx = 1 end
@@ -1011,19 +1259,7 @@ function UI.draw()
         if reaper.ImGui_Selectable(ctx, name, (UI.config.source_profile or 0) == profile_id) then
           UI.config.source_profile = profile_id
           Cache.set_profile(current_guid, profile_id)
-          Logger:debug(string.format("UI_PROFILE | guid:%s | profile:%d", tostring(current_guid), profile_id))
-          local ah = UI.hunters[UI.active_hunter_idx]
-          if profile_id == 4 and ah then
-            if ah.name == "Plosive Hunter" then
-              if UI.config.ratio_thresh == nil or UI.config.ratio_thresh >= (ah.default_config.ratio_thresh or 12.0) then
-                UI.config.ratio_thresh = 9.0
-              end
-            elseif ah.name == "Breath Hunter" then
-              if UI.config.sensitivity == nil or UI.config.sensitivity <= 0.0 then
-                UI.config.sensitivity = 0.15
-              end
-            end
-          end
+          
           if UI.auto_rescan and profile_id > 0 then trigger_scan_or_detect() end
         end
       end
@@ -1043,6 +1279,22 @@ function UI.draw()
     UI.selected_presets = UI.selected_presets or {}
     UI.selected_preset_name = UI.selected_preset_name or UI.selected_presets[active_hunter.name] or "Default"
 
+    if active_hunter and active_hunter.name == "Plosive Hunter" then
+      local profile_id = UI.config.source_profile or 0
+      if profile_id > 0 and active_hunter.Profiles and active_hunter.Profiles[profile_id] then
+        if UI._plosive_profile_applied_id ~= profile_id then
+          local p = active_hunter.Profiles[profile_id]
+          UI.config.low_pass = p.low_pass
+          UI.config.min_low_db = p.min_low_db
+          UI.config.transient_thresh = p.transient_thresh
+          UI.config.delay_ms = p.delay_ms
+          UI._plosive_profile_applied_id = profile_id
+        end
+      else
+        UI._plosive_profile_applied_id = 0
+      end
+    end
+
     local preset_label = "Preset"
     local tw_p, _ = reaper.ImGui_CalcTextSize(ctx, preset_label)
     local w_p = math.max(140, math.min(tw_p + 44, 220))
@@ -1051,82 +1303,11 @@ function UI.draw()
       reaper.ImGui_Text(ctx, "Preset")
       reaper.ImGui_Separator(ctx)
 
-      local function apply_builtin_preset(hunter, name)
-        local old = UI.config or {}
-        local persist_keys = { "source_profile", "use_take_fx", "live_edit", "level_auto", "reduction_db", "pre_ramp_ms", "post_ramp_ms" }
-        local persist = {}
-        for _, k in ipairs(persist_keys) do persist[k] = old[k] end
-        UI.config = {}
-        for k, v in pairs(hunter.default_config) do UI.config[k] = v end
-        for k, v in pairs(persist) do if v ~= nil then UI.config[k] = v end end
-        if hunter.name == "Breath Hunter" then
-          if name == "Conservative" then
-            UI.config.min_level_db = -45.0
-            UI.config.max_level_db = -28.0
-            UI.config.zcr_thresh = 0.18
-            UI.config.min_seg_ms = 120
-            UI.config.max_gap_ms = 30
-          elseif name == "Balanced" then
-            -- defaults retained
-          elseif name == "Aggressive" then
-            UI.config.min_level_db = -55.0
-            UI.config.max_level_db = -18.0
-            UI.config.zcr_thresh = 0.12
-            UI.config.min_seg_ms = 70
-            UI.config.max_gap_ms = 60
-          end
-        elseif hunter.name == "Ess Hunter" then
-          if name == "Conservative" then
-            UI.config.min_level_db = -40.0
-            UI.config.zcr_thresh = 0.22
-            UI.config.delta_on = 0.10
-            UI.config.delta_off = 0.06
-            UI.config.min_seg_ms = 30
-          elseif name == "Balanced" then
-            -- defaults retained
-          elseif name == "Aggressive" then
-            UI.config.min_level_db = -55.0
-            UI.config.zcr_thresh = 0.18
-            UI.config.delta_on = 0.05
-            UI.config.delta_off = 0.03
-            UI.config.min_seg_ms = 20
-          end
-        elseif hunter.name == "Plosive Hunter" then
-          if name == "Conservative" then
-            UI.config.min_low_db = -45.0
-            UI.config.ratio_thresh = 15.0
-            UI.config.transient_thresh = 4.0
-            UI.config.crest_thresh = 3.0
-            UI.config.decay_thresh = 4.0
-          elseif name == "Balanced" then
-            -- defaults retained
-          elseif name == "Aggressive" then
-            UI.config.min_low_db = -55.0
-            UI.config.ratio_thresh = 9.0
-            UI.config.transient_thresh = 2.0
-            UI.config.crest_thresh = 2.0
-            UI.config.decay_thresh = 2.0
-          end
-        end
-        UI.selected_preset_name = name
-        UI.selected_presets[hunter.name] = name
-        if UI.auto_rescan then trigger_scan_or_detect() end
-      end
-
       if reaper.ImGui_Selectable(ctx, "Default", UI.selected_preset_name == "Default") then
         UI.selected_preset_name = "Default"
         UI.selected_presets[active_hunter.name] = "Default"
         UI.config = {}
         for k, v in pairs(active_hunter.default_config) do UI.config[k] = v end
-      end
-      if reaper.ImGui_Selectable(ctx, "Conservative", UI.selected_preset_name == "Conservative") then
-        apply_builtin_preset(active_hunter, "Conservative")
-      end
-      if reaper.ImGui_Selectable(ctx, "Balanced", UI.selected_preset_name == "Balanced") then
-        apply_builtin_preset(active_hunter, "Balanced")
-      end
-      if reaper.ImGui_Selectable(ctx, "Aggressive", UI.selected_preset_name == "Aggressive") then
-        apply_builtin_preset(active_hunter, "Aggressive")
       end
 
       local custom_names = list_custom_presets(active_hunter.name)
@@ -1296,7 +1477,14 @@ function UI.draw()
       if reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, reaper.ImGui_MouseButton_Right()) then
         -- Default Handling:
         -- If key is 'sensitivity', default is 0.0
-        local def_val = UI.hunters[UI.active_hunter_idx].default_config[key]
+        local active_hunter = UI.hunters[UI.active_hunter_idx]
+        local def_val = nil
+        local profile_id = UI.config.source_profile or 2
+        if active_hunter.Profiles and active_hunter.Profiles[profile_id] and active_hunter.Profiles[profile_id][key] ~= nil then
+          def_val = active_hunter.Profiles[profile_id][key]
+        else
+          def_val = active_hunter.default_config[key]
+        end
         if key == "sensitivity" and def_val == nil then def_val = 0.0 end
         
         if def_val ~= nil then
@@ -1314,12 +1502,20 @@ function UI.draw()
         if key == "reduction_db" or key == "pre_ramp_ms" or key == "post_ramp_ms" then
              local cache, _, _ = get_active_cache_for_selected_item()
              if cache and cache.segments then
+                 local ah = UI.hunters[UI.active_hunter_idx]
+                 local is_plosive = ah and ah.name == "Plosive Hunter"
                  for _, seg in ipairs(cache.segments) do
-                     if key == "reduction_db" then seg.gain_db = v end
+                     if key == "reduction_db" then
+                       if is_plosive and seg.points and #seg.points > 0 then
+                         seg.hpf_strength = v
+                       else
+                         seg.gain_db = v
+                       end
+                     end
                  end
-                 -- Se c'è una modifica in Live Edit, applichiamo quella unificata, non solo l'Hunter corrente!
+                 -- If modifying in Live Edit, apply the unified logic, not just the current Hunter!
                  if UI.config.live_edit then
-                    apply_live_edit() -- Ora chiama apply_live_edit che a sua volta chiama apply_reduction (unificata)
+                    apply_live_edit() -- Calls apply_live_edit which internally calls apply_reduction (unified)
                  end
              end
         end
@@ -1358,7 +1554,14 @@ function UI.draw()
       end
       local changed, v = ImGui.SliderInt(ctx, "##" .. label, UI.config[key], min, max, nil, nil)
       if reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, reaper.ImGui_MouseButton_Right()) then
-        local def_val = UI.hunters[UI.active_hunter_idx].default_config[key]
+        local active_hunter = UI.hunters[UI.active_hunter_idx]
+        local def_val = nil
+        local profile_id = UI.config.source_profile or 2
+        if active_hunter.Profiles and active_hunter.Profiles[profile_id] and active_hunter.Profiles[profile_id][key] ~= nil then
+          def_val = active_hunter.Profiles[profile_id][key]
+        else
+          def_val = active_hunter.default_config[key]
+        end
         if def_val ~= nil then
           v = def_val
           changed = true
@@ -1402,9 +1605,29 @@ function UI.draw()
       return changed
     end
 
-    -- Global Scan Option (all hunters)
-    reaper.ImGui_SeparatorText(UI.ctx, "SCAN")
-    UI.auto_rescan = Toggle("Auto Re-Scan on Change", UI.auto_rescan)
+    -- Global Options
+    reaper.ImGui_SeparatorText(UI.ctx, "GLOBAL OPTIONS")
+    
+    if reaper.ImGui_BeginTable(UI.ctx, "GlobalOptionsTable", 2, reaper.ImGui_TableFlags_SizingStretchSame()) then
+      reaper.ImGui_PushStyleVar(UI.ctx, reaper.ImGui_StyleVar_CellPadding(), 0, 8)
+      reaper.ImGui_TableSetupColumn(UI.ctx, "Col1", reaper.ImGui_TableColumnFlags_WidthStretch())
+      reaper.ImGui_TableSetupColumn(UI.ctx, "Col2", reaper.ImGui_TableColumnFlags_WidthStretch())
+      
+      reaper.ImGui_TableNextRow(UI.ctx)
+      reaper.ImGui_TableNextColumn(UI.ctx)
+      UI.auto_rescan = Toggle("Auto Re-Scan on Change", UI.auto_rescan)
+      
+      reaper.ImGui_TableNextColumn(UI.ctx)
+      local move_env_state = reaper.GetToggleCommandState(40070) == 1
+      local new_move_env_state = Toggle("Move Envelopes with Items", move_env_state)
+      if new_move_env_state ~= move_env_state then
+        reaper.Main_OnCommand(40070, 0)
+      end
+      
+      reaper.ImGui_PopStyleVar(UI.ctx)
+      reaper.ImGui_EndTable(UI.ctx)
+    end
+    
     reaper.ImGui_Spacing(UI.ctx)
 
     if hunter.name == "Plosive Hunter" then
@@ -1418,23 +1641,27 @@ function UI.draw()
 
         reaper.ImGui_TableNextRow(UI.ctx)
         reaper.ImGui_TableNextColumn(UI.ctx)
-        IntSlider("Low Pass Freq (Hz)", "low_pass", 50, 400, -1)
+        IntSlider("Low Pass Freq (Hz)", "low_pass", 40, 150, -1)
         reaper.ImGui_TableNextColumn(UI.ctx)
-        -- Expanded range for Thump Ratio: -6.0dB to 24.0dB
-        -- Allows detecting plosives that are not strictly louder in Low Band (e.g. equal energy)
-        Slider("Thump Ratio (dB)", "ratio_thresh", -6.0, 24.0, "%.1f", -1)
+        IntSlider("Lookback (ms)", "delay_ms", 10, 80, -1)
 
         reaper.ImGui_TableNextRow(UI.ctx)
         reaper.ImGui_TableNextColumn(UI.ctx)
-        Slider("Min Low Energy (dB)", "min_low_db", -60.0, -20.0, "%.1f", -1)
+        Slider("Min Low Energy (dB)", "min_low_db", -80.0, -20.0, "%.1f", -1)
         reaper.ImGui_TableNextColumn(UI.ctx)
-        Slider("Transient Burst (dB/hop)", "transient_thresh", 0.0, 12.0, "%.1f", -1)
+        Slider("Burst vs Lookback (dB)", "transient_thresh", 0.0, 14.0, "%.1f", -1)
 
         reaper.ImGui_TableNextRow(UI.ctx)
         reaper.ImGui_TableNextColumn(UI.ctx)
-        Slider("Max Gap (ms)", "max_gap_ms", 10, 200, "%.0f", -1)
+        Slider("Max Gap (ms)", "max_gap_ms", 0, 80, "%.0f", -1)
         reaper.ImGui_TableNextColumn(UI.ctx)
-        Slider("Min Segment (ms)", "min_seg_ms", 5, 100, "%.0f", -1)
+        Slider("Min Segment (ms)", "min_seg_ms", 1, 40, "%.0f", -1)
+
+        reaper.ImGui_TableNextRow(UI.ctx)
+        reaper.ImGui_TableNextColumn(UI.ctx)
+        reaper.ImGui_TextDisabled(UI.ctx, "Max Gap merges short dips inside one plosive segment.")
+        reaper.ImGui_TableNextColumn(UI.ctx)
+        reaper.ImGui_TextDisabled(UI.ctx, "Min Segment rejects very short detections (clicks/edge noise).")
 
         reaper.ImGui_PopStyleVar(UI.ctx)
         reaper.ImGui_EndTable(UI.ctx)
@@ -1469,7 +1696,7 @@ function UI.draw()
             break
           end
         end
-        reaper.ImGui_Text(UI.ctx, "Shape")
+        reaper.ImGui_Text(UI.ctx, "Shape (HPF)")
         reaper.ImGui_SameLine(UI.ctx)
         reaper.ImGui_SetNextItemWidth(UI.ctx, -1)
         if reaper.ImGui_BeginCombo(UI.ctx, "##Shape", shape_names[current_shape_idx + 1]) then
@@ -1495,7 +1722,7 @@ function UI.draw()
 
         reaper.ImGui_TableNextRow(UI.ctx)
         reaper.ImGui_TableNextColumn(UI.ctx)
-        Slider("Reduction Amount (dB)", "reduction_db", 0.0, 24.0, "%.1f", -1)
+        Slider("HPF Intensity", "reduction_db", 0.0, 24.0, "%.1f", -1)
         reaper.ImGui_TableNextColumn(UI.ctx)
         Slider("Pre-Ramp (ms)", "pre_ramp_ms", 0, 100, "%.0f", -1)
 
@@ -1612,10 +1839,24 @@ function UI.draw()
 
         reaper.ImGui_TableNextRow(UI.ctx)
         reaper.ImGui_TableNextColumn(UI.ctx)
-        UI.config.level_auto = UI.config.level_auto ~= false
+        local old_auto = UI.config.level_auto
         UI.config.level_auto = Toggle("Auto Levels", UI.config.level_auto)
+        if old_auto ~= UI.config.level_auto and UI.auto_rescan then
+            UI._rescan_armed = true
+            UI._rescan_last_change = reaper.time_precise()
+        end
         reaper.ImGui_TableNextColumn(UI.ctx)
-        Slider("Sensitivity", "sensitivity", -1.0, 1.0, "%.2f", -1)
+        UI.config.focus = UI.config.focus or 0.5
+        Slider("Focus (Isolamento)", "focus", 0.0, 1.0, "%.2f", -1)
+
+        reaper.ImGui_TableNextRow(UI.ctx)
+        reaper.ImGui_TableNextColumn(UI.ctx)
+        UI.config.style = UI.config.style or 0.5
+        Slider("Breath Style", "style", 0.0, 1.0, "%.2f", -1)
+        
+        reaper.ImGui_TableNextColumn(UI.ctx)
+        UI.config.character = UI.config.character or 0.5
+        Slider("Character", "character", 0.0, 1.0, "%.2f", -1)
 
         if not UI.config.level_auto then
           reaper.ImGui_TableNextRow(UI.ctx)

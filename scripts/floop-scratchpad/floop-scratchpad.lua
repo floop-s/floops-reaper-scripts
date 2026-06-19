@@ -1,13 +1,11 @@
 -- Floop Scratchpad - Per-track notes system for REAPER.
 -- @description Floop Scratchpad: per-track notes system
--- @version 2.1.0
+-- @version 2.1.1
 -- @author Floop-s
 -- @license GPL-3.0
 -- @changelog
---   + V2.1.0
---   + Added workflow shortcuts to speed up saving/closing.
---   + JSFX: Text luminance adapts (light/dark) based on background color.
---   + Color Picker: Added saved color palette (5 slots).
+--   + V2.1.1
+--   + Remembers last used text size when switching to tracks without saved state.
 -- @about
 --   Per-track notes system for REAPER.
 --
@@ -252,6 +250,24 @@ local showConfirmClear = false
 local lastProjectPath = nil
 local lastProjectPtr = nil
 local wasTextFocused = false
+local lastUserFontScale = 1.30
+
+do
+  if reaper.HasExtState("FloopScratchpad", "last_font_scale") then
+    local v = tonumber(reaper.GetExtState("FloopScratchpad", "last_font_scale"))
+    if v and v > 0 then
+      lastUserFontScale = v
+    end
+  end
+end
+
+local function setLastUserFontScale(v)
+  local n = tonumber(v)
+  if not n or n <= 0 then return false end
+  lastUserFontScale = n
+  reaper.SetExtState("FloopScratchpad", "last_font_scale", tostring(n), true)
+  return true
+end
 
 local function log(msg)
 end
@@ -411,6 +427,10 @@ end
 
 local function getFontScaleForTrack(trackGUID)
   if not trackGUID then return 1.30 end
+  local retval, dataString = reaper.GetProjExtState(0, "FloopScratchpad", trackGUID)
+  if not retval or dataString == "" then
+    return lastUserFontScale or 1.30
+  end
   local _, fs, _ = loadNoteState(trackGUID)
   return fs
 end
@@ -511,7 +531,7 @@ local function createStaticJSFXFile()
   reaper.RecursiveCreateDirectory(effectsDir, 0)
   
   local jsfxContent = [[desc:Floop Note Reader
-// @version 2.1.0
+// @version 2.1.1
 // @author Floop-s
 // @about Static JSFX reader for Floop Scratchpad. Uses gmem to receive notes and @serialize for auto-persistence.
 
@@ -1029,6 +1049,7 @@ local function renderUI()
     if currentTrack and isValidTrack(currentTrack) then
       local success, info = performSave(currentTrack, noteText)
       if success then
+        setLastUserFontScale(jsfxFontScale)
         statusMsg = '✅ Font scale updated'
       else
         statusMsg = '❌ Autosave failed: ' .. info
@@ -1057,6 +1078,7 @@ local function renderUI()
     if currentTrack and isValidTrack(currentTrack) then
       local success, info = performSave(currentTrack, noteText)
       if success then
+        setLastUserFontScale(jsfxFontScale)
         statusMsg = '✅ Font size updated'
       else
         statusMsg = '❌ Autosave failed: ' .. info

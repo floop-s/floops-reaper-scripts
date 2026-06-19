@@ -1,12 +1,23 @@
 -- @description Floop Hunter Framework
--- @version 1.0.0
+-- @version 1.1.0
 -- @author Floop-s
 -- @license GPL-3.0
+-- @changelog
+--   + Complete rewrite of Plosive Hunter and Breath Hunter DSP logic.
+--   + Redefined Ess Hunter logic.
+--   + Introduced Acoustic Profiles (Female, Male, Spoken, Rap) & Macro-Sliders.
+--   + Upgraded JSFX and routing to completely decouple Plosives (HPF) from Ess/Breaths (Gain).
+--   + Added Custom User Presets system.
+--   + Major UI/UX layout optimizations.
 -- @about
 --   # Floop Hunter Framework
 --   Artifact detection and gain-reduction helper for REAPER (Ess / Plosive / Breath).
 --   Requires ReaImGui.
--- @metapackage
+--
+--   This script is a workflow accelerator, designed to find candidates quickly 
+--   and provide you with an interactive editor to rapidly confirm, delete, or adjust the 
+--   automation. It is a starting point to save you hours of manual clicking, but your ears 
+--   remain the final judge.
 -- @provides
 --   [main] . > Floop Hunter Framework/floop-hunter-framework.lua
 --   [nomain] modules/floop_cache.lua > Floop Hunter Framework/modules/floop_cache.lua
@@ -31,10 +42,6 @@ if not reaper.ImGui_CreateContext then
     return
 end
 
--- Ensure: "Move envelope points with media items" (40070).
-if reaper.GetToggleCommandState(40070) == 0 then
-    reaper.Main_OnCommand(40070, 0) -- Toggle ON
-end
 
 local ImGui = require("floop_imgui")
 local Logger = require("floop_logger")
