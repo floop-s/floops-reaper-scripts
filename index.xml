@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="ab3800f293163a80fa37d5d71c60357d56667d4d">
+<index version="1" name="Floop's Reaper Scripts" commit="b375dae77b5a306f11a24320a796bf819a28569d">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -232,6 +232,7 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
 
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Floop Hunter Framework\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Artifact detection and gain-reduction helper for REAPER (Ess / Plosive / Breath). Requires ReaImGui.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This script is a workflow accelerator, designed to find candidates quickly and provide you with an interactive editor to rapidly confirm, delete, or adjust the automation. It is a starting point to save you hours of manual clicking, but your ears remain the final judge.\par}
 }
 ]]></description>
       </metadata>
@@ -246,6 +247,24 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
         <source file="Floop Hunter Framework/modules/hunters/hunter_breath.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/hunters/hunter_breath.lua</source>
         <source file="Floop Hunter Framework/modules/hunters/hunter_ess.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/hunters/hunter_ess.lua</source>
         <source file="Floop Hunter Framework/modules/hunters/hunter_plosive.lua">https://github.com/floop-s/floops-reaper-scripts/raw/c83e269330092eb3a01d19dacd92a9b63cf20155/scripts/floop-hunter-framework/modules/hunters/hunter_plosive.lua</source>
+      </version>
+      <version name="1.1.0" author="Floop-s" time="2026-06-19T03:51:04Z">
+        <changelog><![CDATA[+ Complete rewrite of Plosive Hunter and Breath Hunter DSP logic.
++ Redefined Ess Hunter logic.
++ Introduced Acoustic Profiles (Female, Male, Spoken, Rap) & Macro-Sliders.
++ Upgraded JSFX and routing to completely decouple Plosives (HPF) from Ess/Breaths (Gain).
++ Added Custom User Presets system.
++ Major UI/UX layout optimizations.]]></changelog>
+        <source main="main" file="Floop Hunter Framework/floop-hunter-framework.lua">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-hunter-framework/floop-hunter-framework.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_cache.lua">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-hunter-framework/modules/floop_cache.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_dsp.lua">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-hunter-framework/modules/floop_dsp.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_engine.lua">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-hunter-framework/modules/floop_engine.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_imgui.lua">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-hunter-framework/modules/floop_imgui.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_logger.lua">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-hunter-framework/modules/floop_logger.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_ui.lua">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-hunter-framework/modules/floop_ui.lua</source>
+        <source file="Floop Hunter Framework/modules/hunters/hunter_breath.lua">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-hunter-framework/modules/hunters/hunter_breath.lua</source>
+        <source file="Floop Hunter Framework/modules/hunters/hunter_ess.lua">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-hunter-framework/modules/hunters/hunter_ess.lua</source>
+        <source file="Floop Hunter Framework/modules/hunters/hunter_plosive.lua">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-hunter-framework/modules/hunters/hunter_plosive.lua</source>
       </version>
     </reapack>
   </category>
@@ -333,6 +352,11 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
 + JSFX: Text luminance adapts (light/dark) based on background color.
 + Color Picker: Added saved color palette (5 slots).]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/33ea87ceb8c979a247100bc49490f3b85cd0e23b/scripts/floop-scratchpad/floop-scratchpad.lua</source>
+      </version>
+      <version name="2.1.1" author="Floop-s" time="2026-06-19T03:51:04Z">
+        <changelog><![CDATA[+ V2.1.1
++ Remembers last used text size when switching to tracks without saved state.]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-scratchpad/floop-scratchpad.lua</source>
       </version>
     </reapack>
   </category>
