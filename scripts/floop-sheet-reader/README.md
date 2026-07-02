@@ -1,6 +1,6 @@
-# Sheet Reader v2.2.0 - PDF & Image Viewer
+# Sheet Reader v2.2.1 - PDF & Image Viewer
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-2.2.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-2.2.1-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 **Sheet Reader** is a Reaper script that allows you to load and view PDF and image files directly inside Reaper. The script utilizes Poppler to convert PDF files into images for display in the GUI. Users can zoom in and out using the buttons or "Ctrl + Mouse Wheel".
 
@@ -91,6 +91,9 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 - **Environment**: Antivirus/Firewall may need exceptions for the REAPER resource path.
 
 ## Changelog
+
+### Version 2.2.1 (2026-07-02)
+- **Maintenance**: Updated Poppler Windows binary download link and SHA256 verification hash.
 
 ### Version 2.2.0 (2026-04-06)
 - **Performance**: Completely resolved UI freezing during Poppler installation using an asynchronous VBS/PowerShell pipeline.

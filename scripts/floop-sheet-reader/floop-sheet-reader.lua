@@ -1,14 +1,10 @@
 -- Floop Sheet Reader - PDF and Image Viewer
 -- @description Floop Sheet Reader: load and view PDF and image files.
--- @version 2.2.0
+-- @version 2.2.1
 -- @author Floop-s
 -- @license GPL-3.0
 -- @changelog
---   - Completely resolved UI freezing during Poppler installation (asynchronous VBS/PowerShell pipeline).
---   - Re-written image caching system to fix memory leaks and "invalid texture" errors.
---   - "Select PDF/Image" now correctly remembers the last accessed directory.
---   - Scoped global functions to local for script safety and performance.
---   - Polished About/Credits modal.
+--   - Update Poppler Windows binary download link and SHA256 verification hash.
 -- @about
 --   Windows-only script.
 --
@@ -20,7 +16,7 @@
 --   First, the script checks if "pdftoppm" is installed. If not, it prompts the user  
 --   to install Poppler automatically. Poppler is downloaded from the official release  
 --   page and extracted to the Reaper resource folder:  
---   https://github.com/oschwartz10612/poppler-windows/releases/download/v25.12.0-0/Release-25.12.0-0.zip
+--   https://github.com/oschwartz10612/poppler-windows/releases/download/v26.02.0-0/Release-26.02.0-0.zip
 --   Once installed, the script converts PDF pages into images and displays them in the GUI.  
 --
 --    Requires:
@@ -425,10 +421,12 @@ local function find_poppler_bin()
         end
         i = i + 1
     end
-    local fallback1 = base .. "\\poppler-25.12.0-0\\Library\\bin"
+    local fallback1 = base .. "\\poppler-26.02.0-0\\Library\\bin"
     if is_valid_pdftoppm_bin(fallback1) then return fallback1 end
-    local fallback2 = base .. "\\poppler-24.08.0\\Library\\bin"
+    local fallback2 = base .. "\\poppler-25.12.0-0\\Library\\bin"
     if is_valid_pdftoppm_bin(fallback2) then return fallback2 end
+    local fallback3 = base .. "\\poppler-24.08.0\\Library\\bin"
+    if is_valid_pdftoppm_bin(fallback3) then return fallback3 end
     return nil
 end
 
@@ -456,7 +454,7 @@ end
 local download_state = nil
 
 local function install_pdftoppm()
-    local url = "https://github.com/oschwartz10612/poppler-windows/releases/download/v25.12.0-0/Release-25.12.0-0.zip"
+    local url = "https://github.com/oschwartz10612/poppler-windows/releases/download/v26.02.0-0/Release-26.02.0-0.zip"
     status_message = 'Checking connectivity...'
     
     local zip_path = join_path(reaper.GetResourcePath(), 'Poppler.zip')
@@ -471,7 +469,7 @@ local function install_pdftoppm()
     os.remove(done_file)
     os.remove(err_file)
 
-    local expected_sha256 = '9499c7474e4deb41c80ef5ea4a18cc1f3843695fbfa3c247db5c46c6eab2e26f'
+    local expected_sha256 = '993e4a94376ed712fafc7058d724ea0b943d118bbd2305cd9ed55174eb85cda5'
 
     local ps_cmd = string.format([[
 Try {
