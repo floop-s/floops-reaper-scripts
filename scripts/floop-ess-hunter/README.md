@@ -1,33 +1,36 @@
 # Floop Ess Hunter
 
-**Taming hiss in a single pass.**
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.2.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
-
+**Automatic vocal cleanup for REAPER. Detects and reduces harsh sibilance ("s", "sh", "ch") with precision volume automation.**
 
 ## Overview
 
-**Floop Ess Hunter** analyzes vocal items to detect sibilant sounds ("s", "sh", "ch") and automatically reduces their level by writing volume envelope points only on detected segments. The analysis is precise and configurable, aiming to preserve natural dynamics in speech and singing.
+**Floop Ess Hunter** is an advanced automation writer designed to automatically clean up sibilant sounds in vocal recordings. It listens to selected vocal tracks, detects artifacts using source-specific frequency analysis, and writes precise volume automation to reduce them non-destructively.
+
+By writing envelope points only on detected segments, it preserves the natural dynamics of the surrounding performance, saving you hours of tedious manual clicking and zooming. Treat the script's output as a highly advanced starting point. It does the heavy lifting, but your ears remain the final judge.
 
 ## Screenshot
 
-<p align="center"> 
+
+ <p align="center"> 
  <br> 
- <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-ess-hunter-v1.1.0.png" target="_blank"> 
-   <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-ess-hunter-v1.1.0.png" width="450" style="border: 1px solid #27a086ff;" alt="Click to zoom in"> 
+ <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-ess-hunter-advanced.png" target="_blank"> 
+   <img src="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-ess-hunter-advanced.png" width="450"  alt="Click to zoom in"> 
  </a> 
  <br> 
  </p>
 
 ## Key Features
 
-*   **Multi-band Analysis**: Focuses on the 3.5–9.5 kHz range, plus ZCR (Zero Crossing Rate) detection.
-*   **Adaptive Threshold**: Uses band/wide spectral ratio.
-*   **Optimized Performance**: Median calculation via Quickselect (O(n)).
+*   **Zero-Allocation DSP Engine**: Blazing fast Single-Pass analysis focusing on targeted frequencies.
+*   **Real-time "Live Edit"**: Instantly see and hear segment boundaries and volume changes without full re-analysis.
+*   **Adaptive Threshold**: Uses band/wide spectral ratio for robust detection.
 *   **Precise Editing**: Writes envelope points only on sibilant segments.
-*   **Non-Destructive**: Supports Pre-FX Volume envelope and non-cumulative segment replacement.
-*   **Safe Workflow**: Automatic Undo blocks for apply/clear operations.
-*   **Visual Preview**: Zoom/pan, ratio overlay, and draggable segment edges with optional hop snapping.
-*   **Presets**: Built-in presets for Speech, Soft Singing, Aggressive Singing, plus user presets.
+*   **Non-Destructive**: Supports Track Volume, Pre-FX Volume, and Take Volume envelopes.
+*   **Safe Workflow**: Automatically wipes overlapping segments cleanly and integrates with REAPER's Undo blocks.
+*   **Interactive Visual Preview**: Zoom/pan, resize segments, and tweak individual segment gain directly on the waveform.
+*   **Presets**: Built-in presets for Speech, Soft Singing, Aggressive Singing, plus user custom presets.
 
 ## Requirements
 
@@ -81,41 +84,47 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 4.  Adjust parameters under **Advanced Setting** if needed.
 5.  Use **Clear segments on selection** to remove segments.
 
-> **Tip**: You can target the **Pre-FX Volume** envelope (recommended) or the standard **Track Volume** envelope. The script ensures the chosen envelope is visible.
+> **Tip**: You can target the **Pre-FX Volume** envelope (recommended) or the standard **Track Volume** envelope. You can also target the **Take Volume** envelope. The script ensures the chosen envelope is visible.
 
 ## Parameters (Fine Tuning)
 
 ### Analysis
-*   **Min Hz / Max Hz**: Frequency range of interest (default 3500–9500 Hz).
-*   **Step Hz**: Spacing between band centers (default 1000 Hz).
-*   **Q**: Filter quality factor (default 4.0).
+*   **Target Freq**: Frequency cutoff for sibilance detection (High-Pass Filter) (default 6000 Hz).
+*   **Threshold**: Minimum signal level for sibilance detection (default -40.0 dB).
+*   **Sibilance Sens.**: Master sensitivity control adjusting internal ZCR and ratio thresholds (default 50.0 %).
 
 ### Detection
-*   **Window / Hop**: Analysis window and hop size (default 12 / 6 ms).
-*   **Min Level (dB)**: Minimum level to consider content (default −45 dB).
-*   **ZCR Threshold**: Zero-crossing threshold for fricatives (default 0.12).
-*   **Delta IN / OUT**: Hysteresis for on/off (default 0.08 / 0.05).
+*   **Min Length**: Minimum duration for a valid sibilant segment (default 20 ms).
+*   **Max Gap**: Maximum gap within a sibilant segment before splitting (default 20 ms).
 
 ### Segments
-*   **Min Segment**: Minimum segment duration (default 25 ms).
-*   **Max Gap**: Fills micro-pauses up to this length (default 18 ms).
-*   **Pre / Post Ramp**: Fade-in/out edges (default 8 / 12 ms).
-*   **Volume reduction**: Attenuation applied to segments (default 4.0 dB).
-*   **Use Pre-FX Volume**: Writes to Pre-FX Volume (default: on).
-*   **Replace segments**: Rewrites segments without accumulating edits.
+*   **Pre / Post Ramp**: Fade-in/out edges (default 2 / 10 ms).
+*   **Reduction**: Attenuation applied to segments (default 4.0 dB).
+*   **Envelope Target**: Choose between Track Volume, Track Pre-FX, or Take Volume.
 
 ## Troubleshooting
 
 *   **"ReaImGui not found"**: Install via ReaPack and restart REAPER.
 *   **Envelope not visible**: The script tries to show it, but you can manually check Track Envelopes.
 *   **No segments detected**:
-    *   Raise **Min level** (less negative).
-    *   Adjust frequency range.
-    *   Lower **ZCR Threshold**.
-    *   Reduce **Min Segment**.
-*   **Performance**: For very long items, analysis might take time. The algorithm is optimized but processes a lot of data.
+    *   Lower **Threshold** (more negative).
+    *   Increase **Sibilance Sens.**.
+    *   Decrease **Target Freq**.
+    *   Reduce **Min Length**.
+*   **Performance**: Analysis is fully asynchronous and will not freeze the UI, but large items may take a moment to scan.
 
 ## Changelog
+
+### v1.2.0 (2026-06-25)
+*   **UI/UX**: Complete overhaul of the interface with custom toggles.
+*   **UI/UX**: Refactored analysis engine to run asynchronously, preventing UI freezes on long audio items and adding a progress bar.
+*   **Feature**: Added Context-Aware Right-Click Reset for all sliders, falling back to the active preset values.
+*   **Feature**: Optimized Live Edit volume sync. Modifying the global Reduction slider now updates segments in real-time.
+*   **DSP**: Switched from multi-band BPF to a zero-allocation HPF (Butterworth) engine for faster and more coherent sibilance detection.
+*   **Clean-up**: Removed obsolete options to simplify the interface.
+*   **Fix**: Corrected `start_offs` and `playrate` calculations to perfectly align Take Envelopes on trimmed items.
+*   **Fix**: Resolved segment dropping at the rightmost edge of media items.
+*   **Fix**: Fixed incorrect envelope point values by respecting track envelope scaling mode (Fader/Amplitude).
 
 ### v1.1.2 (2026-02-20)
 *   **Fix**: Fixed cumulative volume reduction when sibilant segments overlap.
@@ -140,6 +149,12 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 *   Quickselect O(n) optimization.
 *   Timing correction for playback rates.
 *   Undo blocks integration.
+
+## Support
+
+If this script saves you time, a coffee is always appreciated. 
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-orange?style=flat-square&logo=ko-fi)](https://ko-fi.com/floopsreaperscripts)
 
 ## Author
 

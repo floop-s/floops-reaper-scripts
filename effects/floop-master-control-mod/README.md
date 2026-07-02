@@ -1,6 +1,6 @@
 # Floop Master Control (Modular)
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.0.0-green) ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.1.0-green) ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
 Modular master monitoring and analysis suite for REAPER (JSFX).
 
@@ -113,7 +113,7 @@ All module parameters (such as True Peak Limits, Dim levels, Monitor crossover f
 - Monitor Control
   - NORMAL / SOLO MID / SOLO SIDE
   - DIM (set from the Config sliders)
-  - LOW / MID / HIGH focus (two crossover frequency sliders)
+  - LOW / MID / HIGH focus and their combinations (two crossover frequency sliders)
 - Multi-band Phase
   - Log-frequency display with octave smoothing; stabilized at very low energy to avoid misleading readings.
 
@@ -130,6 +130,11 @@ Floop Master Control (Modular) is derived from the original Floop Master Control
 - FFT-based modules (Spectrum Analyzer, Spectrogram, Multi-band Phase, Stereo Analyzer) typically cost more than simple meters/controls.
 
 ## Changelog
+
+### v1.1.0
+
+- **Monitor Module**: Added support for arbitrary multi-band selections (e.g., LOW + HIGH) via perfectly flat Linkwitz-Riley 4th order (LR4) additive routing.
+- **Fix**: Added 1-pole lowpass smoothing to monitor gain to prevent audio clicks when toggling DIM.
 
 ### v1.0.0
 

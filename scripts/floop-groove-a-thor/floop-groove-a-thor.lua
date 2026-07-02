@@ -1,5 +1,5 @@
 -- @description Floop Groove-A-Thor
--- @version 1.1.0
+-- @version 1.2.0
 -- @author Floop-s
 -- @license GPL-3.0
 -- @about
@@ -19,13 +19,11 @@
 --   * Non-destructive workflow with Undo support
 --
 -- @changelog
---   + Generator: Added Push/Pull offset and hierarchical Velocity Curve.
---   + Injector: Added Phase Coherent Mode for multi-track drum phase preservation.
---   + Extraction: Added 15ms post-transient RMS lookahead for accurate audio velocity.
---   + Extraction: Added Sanity Check warning for Base Grid mismatch.
---   + Visualizer: Extraction preview fully syncs with real-time UI threshold/sensitivity.
---   + Bugfix: Fixed audio loop boundaries shifting when applying groove.
---   + Bugfix: Added Bank deletion via context menu.
+--   + Bugfix: Excluded muted notes from MIDI extraction.
+--   + Bugfix: Fixed MIDI note overlap truncation causing audio clicks.
+--   + Bugfix: Redesigned audio stretch marker clamp loop to prevent marker crossing.
+--   + Improved: Extracted grid type (straight/triplet) is now used as secondary priority in matching.
+--   + Improved: Fixed memory leak in GrooveCache by adding background GC for orphaned Takes.
 -- @provides
 --   [main] floop-groove-a-thor.lua
 
@@ -423,6 +421,14 @@ local GrooveCache = {
     data = {}
 }
 
+function GrooveCache:garbageCollect()
+    for take, _ in pairs(self.data) do
+        if not reaper.ValidatePtr(take, "MediaItem_Take*") then
+            self.data[take] = nil
+        end
+    end
+end
+
 local function hashInit()
     return 2166136261
 end
@@ -660,9 +666,9 @@ local function GetHeuristicGridPos(pos_qn, base_division)
     local dist_triplet = math.abs(pos_qn - pos_triplet)
     
     if dist_triplet < (dist_straight * 0.9) then
-        return pos_triplet, pos_qn - pos_triplet
+        return pos_triplet, pos_qn - pos_triplet, "triplet"
     else
-        return pos_straight, pos_qn - pos_straight
+        return pos_straight, pos_qn - pos_straight, "straight"
     end
 end
 
@@ -977,19 +983,22 @@ function GrooveCore:analyzeSelection(target_item)
         groove.source_type = "MIDI"
         local _, note_count = reaper.MIDI_CountEvts(take)
         for i = 0, note_count - 1 do
-            local _, _, _, startppq, _, chan, pitch, vel = reaper.MIDI_GetNote(take, i)
-            local note_qn = reaper.MIDI_GetProjQNFromPPQPos(take, startppq)
-            local pos_qn_rel = note_qn - start_qn
-            local grid_pos, offset = GetHeuristicGridPos(pos_qn_rel, groove.grid_base)
-            table.insert(groove.points, {
-                pos_qn = grid_pos,
-                offset = offset,
-                velocity = vel / 127,
-                vel_delta = vel - 100,
-                raw_vel = vel,
-                pitch = pitch,
-                chan = chan
-            })
+            local _, _, muted, startppq, _, chan, pitch, vel = reaper.MIDI_GetNote(take, i)
+            if not muted then
+                local note_qn = reaper.MIDI_GetProjQNFromPPQPos(take, startppq)
+                local pos_qn_rel = note_qn - start_qn
+                local grid_pos, offset, grid_type = GetHeuristicGridPos(pos_qn_rel, groove.grid_base)
+                table.insert(groove.points, {
+                    pos_qn = grid_pos,
+                    offset = offset,
+                    grid_type = grid_type,
+                    velocity = vel / 127,
+                    vel_delta = vel - 100,
+                    raw_vel = vel,
+                    pitch = pitch,
+                    chan = chan
+                })
+            end
         end
     else
         groove.source_type = "AUDIO"
@@ -1000,10 +1009,11 @@ function GrooveCore:analyzeSelection(target_item)
                 local abs_time = item_start + pos
                 local marker_qn = reaper.TimeMap2_timeToQN(0, abs_time)
                 local pos_qn_rel = marker_qn - start_qn
-                local grid_pos, offset = GetHeuristicGridPos(pos_qn_rel, groove.grid_base)
+                local grid_pos, offset, grid_type = GetHeuristicGridPos(pos_qn_rel, groove.grid_base)
                 table.insert(groove.points, {
                     pos_qn = grid_pos,
                     offset = offset,
+                    grid_type = grid_type,
                     velocity = 1.0,
                     vel_delta = 0,
                     raw_vel = 100
@@ -1014,7 +1024,7 @@ function GrooveCore:analyzeSelection(target_item)
             for _, t in ipairs(transients) do
                 local marker_qn = reaper.TimeMap2_timeToQN(0, t.time)
                 local pos_qn_rel = marker_qn - start_qn
-                local grid_pos, offset = GetHeuristicGridPos(pos_qn_rel, groove.grid_base)
+                local grid_pos, offset, grid_type = GetHeuristicGridPos(pos_qn_rel, groove.grid_base)
                 local val_lin = math.max(0.000001, t.val)
                 local db = 20 * math.log(val_lin, 10)
                 local raw_vel = math.floor(127 * (1 + (db / 60)))
@@ -1023,6 +1033,7 @@ function GrooveCore:analyzeSelection(target_item)
                 table.insert(groove.points, {
                     pos_qn = grid_pos,
                     offset = offset,
+                    grid_type = grid_type,
                     velocity = raw_vel / 127,
                     vel_delta = vel_delta,
                     raw_vel = raw_vel
@@ -1549,6 +1560,7 @@ function GrooveCore:_findBestMatch(groove, target_qn_abs, pitch, item_pos, start
     end
 
     local loop_pos = (target_qn_abs - start_qn) % groove.length_beats
+    local _, _, target_grid_type = GetHeuristicGridPos(target_qn_abs - start_qn, groove.grid_base or 0.25)
     local min_dist = 1000000
     local best_point = nil
     local best_match_abs_qn = nil
@@ -1582,7 +1594,18 @@ function GrooveCore:_findBestMatch(groove, target_qn_abs, pitch, item_pos, start
             local dist_wrap2 = math.abs((gp.pos_qn + groove.length_beats) - loop_pos)
             local real_dist = math.min(dist, dist_wrap, dist_wrap2)
 
+            local is_better = false
             if real_dist < min_dist then
+                is_better = true
+            elseif math.abs(real_dist - min_dist) < 0.0001 then
+                local current_gp_type = gp.grid_type or "straight"
+                local best_gp_type = best_point and best_point.grid_type or "straight"
+                if current_gp_type == target_grid_type and best_gp_type ~= target_grid_type then
+                    is_better = true
+                end
+            end
+
+            if is_better then
                 min_dist = real_dist
                 best_point = gp
 
@@ -1674,7 +1697,11 @@ function GrooveCore:_applyToMIDI(take, groove, start_qn, item_pos)
             local next = group[i + 1]
             local curr_end = curr.new_start_qn + curr.len_qn
             if curr_end > next.new_start_qn then
-                curr.len_qn = math.max(0.01, next.new_start_qn - curr.new_start_qn - 0.001)
+                local new_len = math.max(0.03125, next.new_start_qn - curr.new_start_qn - 0.001)
+                if DEBUG_MODE then
+                    dbg(string.format("Truncated overlapping MIDI note (pitch %d) from %.4f to %.4f QN", curr.pitch, curr.len_qn, new_len))
+                end
+                curr.len_qn = new_len
             end
         end
     end
@@ -2116,36 +2143,46 @@ function GrooveCore:_applyToAudio(take, item, groove, start_qn, item_pos, item_l
 
         last_abs_time = current_abs_time
         
+        local strength = self.application.timing_amount * self.application.global_intensity
+        m.new_pos = m.orig_pos + (delta * strength)
+        m.delta = delta
+        m.is_grouped = is_grouped
+        m.gp = gp
+        m.target_abs_time = target_abs_time
+        m.query_qn = query_qn
+    end
+
+    for i, m in ipairs(markers) do
+        local current_abs_time = item_pos + m.orig_pos
+        
         table.insert(out_info.markers, {
             abs_time = current_abs_time,
-            delta = delta,
-            gp_velocity = gp and gp.velocity or nil
+            delta = m.delta,
+            gp_velocity = m.gp and m.gp.velocity or nil
         })
 
         local vel_factor = 0
 
-        if (gp or is_grouped) then
+        if (m.gp or m.is_grouped) then
             if DEBUG_MODE then
-                local group_tag = is_grouped and "[GROUP] " or ""
-                local offs_val = (gp and gp.offset) or (is_grouped and "Linked") or 0
+                local group_tag = m.is_grouped and "[GROUP] " or ""
+                local offs_val = (m.gp and m.gp.offset) or (m.is_grouped and "Linked") or 0
                 dbg(string.format("%sMarker %d | Moved: %.2f ms | Grid QN: %.3f | Offs: %s",
-                    group_tag, m.index, delta * 1000, query_qn, tostring(offs_val)))
+                    group_tag, m.index, m.delta * 1000, m.query_qn, tostring(offs_val)))
 
-                if not is_grouped and target_abs_time > 0 then
-                    reaper.AddProjectMarker(0, false, target_abs_time, 0, "G_REF_" .. m.index, -1, 0xFF0000)
+                if not m.is_grouped and m.target_abs_time > 0 then
+                    reaper.AddProjectMarker(0, false, m.target_abs_time, 0, "G_REF_" .. m.index, -1, 0xFF0000)
                 end
             end
 
-            local strength = self.application.timing_amount * self.application.global_intensity
-            local new_pos = m.orig_pos + (delta * strength)
+            local new_pos = m.new_pos
 
-
-            if not is_grouped or delta ~= 0 then
+            if not m.is_grouped or m.delta ~= 0 then
                 local min_pos = last_new_pos + 0.001
                 local max_pos = item_len - 0.001
 
                 if i < #markers then
-                    max_pos = markers[i + 1].orig_pos - 0.001
+                    max_pos = markers[i + 1].new_pos - 0.001
                 end
 
                 -- Clamp marker positions to avoid item boundaries.
@@ -2322,6 +2359,25 @@ end
 -- ===========================================================
 -- MAIN UI COMPONENTS
 -- ===========================================================
+local function open_url(url)
+    if type(url) ~= "string" or url == "" then return false end
+    if reaper.CF_ShellExecute then
+        reaper.CF_ShellExecute(url)
+        return true
+    end
+    local os_name = reaper.GetOS() or ""
+    local cmd
+    if os_name:match("Win") then
+        cmd = 'cmd.exe /C start "" "' .. url .. '"'
+    elseif os_name:match("OSX") or os_name:match("macOS") then
+        cmd = 'open "' .. url .. '"'
+    else
+        cmd = 'xdg-open "' .. url .. '"'
+    end
+    reaper.ExecProcess(cmd, 0)
+    return true
+end
+
 local function DrawHelpModal()
     if State.ui.open_help_requested then
         reaper.ImGui_OpenPopup(State.ui.ctx, "Help Guide")
@@ -2437,6 +2493,14 @@ local function DrawHelpModal()
                 reaper.ImGui_BulletText(ctx,
                     'Reset Cache: Force re-analysis if you manually edited stretch markers or item bounds.')
                 reaper.ImGui_BulletText(ctx, 'Files: Grooves are saved as .gat files in the script directory.')
+                reaper.ImGui_Spacing(ctx)
+
+                reaper.ImGui_SeparatorText(ctx, 'SUPPORT')
+                reaper.ImGui_TextWrapped(ctx, 'If this script saves you time, a coffee is always appreciated.')
+                reaper.ImGui_Spacing(ctx)
+                if reaper.ImGui_Button(ctx, "Support Floop's Reaper Scripts on Ko-fi") then
+                    open_url("https://ko-fi.com/floopsreaperscripts")
+                end
 
                 reaper.ImGui_EndChild(ctx)
             end
@@ -3927,7 +3991,15 @@ local function CreateUIFont()
     return reaper.ImGui_CreateFont("sans-serif", UI_CONST.FONT_SIZE)
 end
 
+local gc_timer = 0
+
 local function Loop()
+    local now = reaper.time_precise()
+    if now - gc_timer > 5.0 then
+        GrooveCache:garbageCollect()
+        gc_timer = now
+    end
+
     if not State.ui.font then
         State.ui.font = CreateUIFont()
         reaper.ImGui_Attach(State.ui.ctx, State.ui.font)

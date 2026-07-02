@@ -1,16 +1,16 @@
 # Floop Groove-A-Thor
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.1.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.2.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
-**Transfer rhythmic feel between any Audio or MIDI items in REAPER extract groove, inject swing, generate patterns from scratch.**
+**Extract, generate, and apply groove patterns between Audio and MIDI items in REAPER.**
 
 ---
 
 ## Overview
 
-**Floop Groove-A-Thor** is a comprehensive groove management utility designed to bridge the gap between "feel" and "grid". It allows you to extract the rhythmic feel (timing and velocity) from any Audio or MIDI source and apply it to any target item (Audio or MIDI) with precision.
+**Floop Groove-A-Thor** is a comprehensive groove management utility is a groove extraction and application utility for REAPER. It allows you to extract the rhythmic feel (timing and velocity) from any Audio or MIDI source.
 
-Beyond simple quantization, Groove-A-Thor offers a robust **Visualizer**, a **Groove Library** for storing your favorite feels, and a **Procedural Groove Generator** for creating unique rhythms from scratch.
+Beyond simple quantization, Groove-A-Thor include a **Visualizer**, a **Groove Library** for storing your favorite feels, and a **Procedural Groove Generator** for creating unique rhythms from scratch.
 
 ---
 
@@ -42,8 +42,8 @@ Beyond simple quantization, Groove-A-Thor offers a robust **Visualizer**, a **Gr
     *   **LP (Loop Preview)**: Visual feedback for the procedural groove generator.
 *   **Groove Generator**: Create synthetic grooves using procedural algorithms and sliders to dial in swing, push/pull, and velocity curves.
 *   **Groove Library**: Save, load, and organize your groove presets. Supports persistence across sessions.
-*   **Safety & Undo**: "Backup State" feature allows you to experiment freely and restore the original timing/pitch of items at any time.
-*   **Smart UX**: Auto-locking visualizer after extraction and optimized workflow for fast iteration.
+*   **Backup State**: Stores the original timing and pitch so changes can be restored later.
+*   **Workflow**: The visualizer automatically locks after extraction to preserve the captured groove during editing.
 
 ---
 
@@ -122,7 +122,7 @@ Organize your collected grooves.
 *   **Persistence**: Grooves are saved as `.gat` files in the script directory. Use **Save to Disk** to persist your current groove.
 
 ### 3. Groove Application
-Apply the extracted groove to target items to impart the "feel".
+Apply the extracted groove to target items to apply the extracted groove to target items.
 *   **Target Selection**: Select the target items you want to quantize (Audio or MIDI).
 *   **Grid**: Sets the reference grid for quantization and filtering.
 *   **Strength**: Controls how strongly the timing matches the groove (0% to 100%).
@@ -144,7 +144,7 @@ Real-time feedback on your groove and selection.
 
 ### 5. Groove Generator
 Create synthetic swing patterns from scratch without needing a source file.
-*   **Synthetic Grooves**: Create perfect swing patterns without audio analysis.
+*   **Synthetic Grooves**: Create procedural swing patterns.
 *   **Grid**: Select the base resolution (e.g., 1/16).
 *   **Swing**: Adjust the swing amount (50% = straight, 66% = triplet feel).
 *   **Shortcuts**: Right-click the Swing slider to reset to default (57%).
@@ -164,11 +164,18 @@ Groove-A-Thor is a powerful tool for transferring rhythmic feel, but it operates
 
 *   **Audio Extraction**: Transient detection relies on clear, defined peaks (like drums or percussion). Complex, polyphonic, or heavily washed-out audio (e.g., full mixes, pads) will not yield clean groove patterns.
 *   **Extreme Quantization**: Applying 100% strength with very tight Match Windows on highly unquantized live performances might result in unnatural "stuttering" or skipped notes if the grid and the performance are too far apart.
-*   **Best Practice**: Always listen critically. Groove transfer is as much an art as it is a science. Use the `Strength` slider to blend the extracted feel with the original timing, rather than forcing a rigid 100% match.
+*   **Best Practice**: Always listen critically. Results depend on the source material and the selected parameters. Audition the processed material and adjust the Strength parameter as needed.Use the `Strength` slider to blend the extracted feel with the original timing, rather than forcing a rigid 100% match.
 
 ---
 
 ## Changelog
+
+### v1.2.0
+* Bugfix: Excluded muted notes from MIDI extraction.
+* Bugfix: Increased minimum duration floor to prevent audio clicks during MIDI overlap truncation.
+* Bugfix: Refactored audio stretch marker processing into two passes to safely prevent marker crossing.
+* Improved: Extracted grid type (straight/triplet) is now used as secondary priority in pattern matching.
+* Improved: Fixed memory leak in GrooveCache by adding a periodic Garbage Collector for orphaned Takes.
 
 ### v1.1.0
 * Added: Push/Pull slider to the Procedural Generator to offset the groove ahead/behind the beat.

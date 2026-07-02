@@ -1,7 +1,11 @@
 desc:Floop Master Control (Modular)
-// @version 1.0.0
+// @version 1.1.0
 // @author Floop-s
 // @license GPL-3.0
+// @changelog
+//   + Monitor: Support arbitrary multi-band selections (e.g., Low+High) via additive LR4 routing.
+//   + Fix: Add 1-pole lowpass smoothing to monitor gain to prevent audio clicks when toggling DIM.
+//
 // @about
 //   Modular master monitoring and analysis tool for REAPER.
 //
@@ -254,57 +258,18 @@ function ResetSlots() (
 );
 
 @block
-// --- Monitor Band Focus Mutually Exclusive Logic & Legacy Migration ---
+// --- Monitor Band Focus Logic ---
+// Removed mutual exclusion. Allow arbitrary combinations.
 !init_band_focus_done ? (
-  (band_focus_low == 1 && band_focus_high == 1) ? (
-    band_focus_mid = 1; slider28 = 1;
-    band_focus_low = 0; slider11 = 0;
-    band_focus_high = 0; slider19 = 0;
-  );
-  lp120_active = band_focus_low || band_focus_mid;
-  mid_high_focus = band_focus_high || band_focus_mid;
   last_band_focus_low = band_focus_low;
   last_band_focus_mid = band_focus_mid;
   last_band_focus_high = band_focus_high;
   init_band_focus_done = 1;
 );
 
-(band_focus_low != last_band_focus_low) ? (
-  band_focus_low ? (
-    band_focus_mid = 0; slider28 = 0; slider_automate(1<<27);
-    band_focus_high = 0; slider19 = 0; slider_automate(1<<18);
-    lp120_active = 1; mid_high_focus = 0;
-  ) : (
-    lp120_active = 0; mid_high_focus = 0;
-  );
-  last_band_focus_low = band_focus_low;
-  last_band_focus_mid = band_focus_mid;
-  last_band_focus_high = band_focus_high;
-) :
-(band_focus_mid != last_band_focus_mid) ? (
-  band_focus_mid ? (
-    band_focus_low = 0; slider11 = 0; slider_automate(1<<10);
-    band_focus_high = 0; slider19 = 0; slider_automate(1<<18);
-    lp120_active = 1; mid_high_focus = 1;
-  ) : (
-    lp120_active = 0; mid_high_focus = 0;
-  );
-  last_band_focus_low = band_focus_low;
-  last_band_focus_mid = band_focus_mid;
-  last_band_focus_high = band_focus_high;
-) :
-(band_focus_high != last_band_focus_high) ? (
-  band_focus_high ? (
-    band_focus_low = 0; slider11 = 0; slider_automate(1<<10);
-    band_focus_mid = 0; slider28 = 0; slider_automate(1<<27);
-    lp120_active = 0; mid_high_focus = 1;
-  ) : (
-    lp120_active = 0; mid_high_focus = 0;
-  );
-  last_band_focus_low = band_focus_low;
-  last_band_focus_mid = band_focus_mid;
-  last_band_focus_high = band_focus_high;
-);
+last_band_focus_low = band_focus_low;
+last_band_focus_mid = band_focus_mid;
+last_band_focus_high = band_focus_high;
 
 // Shadow Variables for Thread-Safety
 slot_changed = 0;
@@ -338,8 +303,10 @@ active_slot7_type > 0 ? ( active_slot7_type == 1 ? slot7_m1.mod_meter_block(tp_l
 active_slot8_type > 0 ? ( active_slot8_type == 1 ? slot8_m1.mod_meter_block(tp_limit_mode, lufs_s_limit_db) : active_slot8_type == 2 ? slot8_m2.mod_spectrum_block(spec_avg_mode, spec_slope_db, spec_freeze, spec_smoothing_oct, spec_mode_ms, spec_hold, spec_show_peak) : active_slot8_type == 4 ? slot8_m4.mod_correlometer_block(spec_smoothing_oct) : active_slot8_type == 8 ? slot8_m8.mod_vumeter_block(vu_calib) : active_slot8_type == 9 ? slot8_m9.mod_spectrogram_block(spectrogram_speed); );
 active_slot9_type > 0 ? ( active_slot9_type == 1 ? slot9_m1.mod_meter_block(tp_limit_mode, lufs_s_limit_db) : active_slot9_type == 2 ? slot9_m2.mod_spectrum_block(spec_avg_mode, spec_slope_db, spec_freeze, spec_smoothing_oct, spec_mode_ms, spec_hold, spec_show_peak) : active_slot9_type == 4 ? slot9_m4.mod_correlometer_block(spec_smoothing_oct) : active_slot9_type == 8 ? slot9_m8.mod_vumeter_block(vu_calib) : active_slot9_type == 9 ? slot9_m9.mod_spectrogram_block(spectrogram_speed); );
 
-gain = 10 ^ (out_gain_db / 20);
-dim_active ? gain *= 10 ^ (dim_db / 20);
+target_gain = 10 ^ (out_gain_db / 20);
+dim_active ? target_gain *= 10 ^ (dim_db / 20);
+!init_gain_done ? ( current_gain = target_gain; init_gain_done = 1; );
+gain_smooth = 1 - exp(-1 / (0.015 * srate));
 
 xover_srate != srate ? (
   xover_srate = srate;
@@ -369,13 +336,17 @@ xover_srate != srate ? (
   hp2_2_x1_r = hp2_2_x2_r = hp2_2_y1_r = hp2_2_y2_r = 0;
 );
 
-(lp120_active != band_focus_last_lp || mid_high_focus != band_focus_last_hi) ? (
-  (band_focus_last_lp || band_focus_last_hi) && (lp120_active || mid_high_focus) ? band_xfade = 0;
-  band_focus_last_lp = lp120_active;
-  band_focus_last_hi = mid_high_focus;
-);
+current_focus_state = band_focus_low + band_focus_mid * 2 + band_focus_high * 4;
+active_bands = band_focus_low + band_focus_mid + band_focus_high;
 
-band_target = (lp120_active || mid_high_focus) ? 1 : 0;
+// Bypass filter if 0 or 3 bands selected (perfect reconstruction)
+band_target = (active_bands > 0 && active_bands < 3) ? 1 : 0;
+
+(current_focus_state != last_focus_state) ? (
+  band_target && last_band_target ? band_xfade = 0;
+  last_focus_state = current_focus_state;
+);
+last_band_target = band_target;
 
 (band_target || band_xfade > 0.00001) ? (
   x_t1 = max(40, min(1000, xover1_hz));
@@ -516,14 +487,15 @@ band_xfade = band_xfade * band_xfade_a + band_target * band_xfade_b;
   hp2_2_x2_r = hp2_2_x1_r; hp2_2_x1_r = x; hp2_2_y2_r = hp2_2_y1_r; hp2_2_y1_r = y;
   high_r = y;
 
-  band_mode = lp120_active + mid_high_focus * 2;
-  band_mode == 1 ? (b_l = low_l; b_r = low_r;) : band_mode == 2 ? (b_l = high_l; b_r = high_r;) : (b_l = mid_l; b_r = mid_r;);
+  b_l = (band_focus_low * low_l) + (band_focus_mid * mid_l) + (band_focus_high * high_l);
+  b_r = (band_focus_low * low_r) + (band_focus_mid * mid_r) + (band_focus_high * high_r);
   out_l = out_l * (1 - band_xfade) + b_l * band_xfade;
   out_r = out_r * (1 - band_xfade) + b_r * band_xfade;
 );
 
-spl0 = out_l * gain;
-spl1 = out_r * gain;
+current_gain += (target_gain - current_gain) * gain_smooth;
+spl0 = out_l * current_gain;
+spl1 = out_r * current_gain;
 
 // 3. POST-MONITOR ANALYSIS
 active_slot1_type > 0 ? ( active_slot1_type == 2 ? slot1_m2.mod_spectrum_sample(spl0, spl1) : active_slot1_type == 4 ? slot1_m4.mod_correlometer_sample(spl0, spl1) : active_slot1_type == 5 ? slot1_m5.mod_stereo_sample(spl0, spl1) : active_slot1_type == 6 ? slot1_m6.mod_oscilloscope_sample(spl0, spl1) : active_slot1_type == 7 ? slot1_m7.mod_monitor_sample(spl0, spl1) : active_slot1_type == 9 ? slot1_m9.mod_spectrogram_sample(spl0, spl1); );
