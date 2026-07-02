@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="95857bdb80be675f4fbe905f183f62fc61b99ffd">
+<index version="1" name="Floop's Reaper Scripts" commit="9ad1515b3b0dd8b9701301665f7aa69de7555476">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -452,7 +452,7 @@ Animated floating UI with debounced search.]]></changelog>
 {\pard \ql \f0 \sa180 \li0 \fi0 Windows-only script.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Sheet Reader v2.0\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \u169 ? 2025 2026 Floop-s\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Load and view PDF and image files directly inside Reaper. Uses Poppler for PDF-to-image conversion. First, the script checks if "pdftoppm" is installed. If not, it prompts the user\line to install Poppler automatically. Poppler is downloaded from the official release\line page and extracted to the Reaper resource folder:\line https://github.com/oschwartz10612/poppler-windows/releases/download/v25.12.0-0/Release-25.12.0-0.zip Once installed, the script converts PDF pages into images and displays them in the GUI.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Load and view PDF and image files directly inside Reaper. Uses Poppler for PDF-to-image conversion. First, the script checks if "pdftoppm" is installed. If not, it prompts the user\line to install Poppler automatically. Poppler is downloaded from the official release\line page and extracted to the Reaper resource folder:\line https://github.com/oschwartz10612/poppler-windows/releases/download/v26.02.0-0/Release-26.02.0-0.zip Once installed, the script converts PDF pages into images and displays them in the GUI.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Requires: reapack.com/repos/cfillion/reaimgui/ReaImGui_{\i .ext >= 0.10.2 reapack.com/repos/reapack/sws/SWS_}.ext keywords: sheet, pdf, image, viewer, score, music\par}
 }
 ]]></description>
@@ -471,6 +471,10 @@ Animated floating UI with debounced search.]]></changelog>
 - Scoped global functions to local for script safety and performance.
 - Polished About/Credits modal.]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/2b418bb07d1a4370e07d4686df3c7a04dcbae304/scripts/floop-sheet-reader/floop-sheet-reader.lua</source>
+      </version>
+      <version name="2.2.1" author="Floop-s" time="2026-07-02T05:18:03Z">
+        <changelog><![CDATA[- Update Poppler Windows binary download link and SHA256 verification hash.]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/9ad1515b3b0dd8b9701301665f7aa69de7555476/scripts/floop-sheet-reader/floop-sheet-reader.lua</source>
       </version>
     </reapack>
   </category>
