@@ -6,11 +6,11 @@
 
 ## Overview
 
-**Floop Bill The Pain Clock** is a time-tracking and billing utility that runs as a runs as a persistent background process inside REAPER. It monitors the time spent on your REAPER projects, completely decoupled from the graphical interface, ensuring time is tracked even if you close the UI. 
+**Floop Bill The Pain Clock** is a time-tracking and billing utility that runs as a persistent background process inside REAPER. It monitors the time spent on your REAPER projects, completely decoupled from the graphical interface, ensuring time is tracked even if you close the UI. 
 
 The tool features native Idle Detection, automatically halting tracking if you step away, and interacts with REAPER's transport status to manage tracking states dynamically.
 
-## Overview 
+## Screenshot
 
 <p align="center"> 
   <a href="https://raw.githubusercontent.com/floop-s/floops-reaper-scripts/main/assets/floop-bill-the-pain-clock.png" target="_blank">
