@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="b375dae77b5a306f11a24320a796bf819a28569d">
+<index version="1" name="Floop's Reaper Scripts" commit="95857bdb80be675f4fbe905f183f62fc61b99ffd">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -102,6 +102,20 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
         <source file="modules/mod_stereo.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/4083130d57c0f9f18c3c1348a7e57642e8fd9b2e/effects/floop-master-control-mod/modules/mod_stereo.jsfx-inc</source>
         <source file="modules/mod_vumeter.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/4083130d57c0f9f18c3c1348a7e57642e8fd9b2e/effects/floop-master-control-mod/modules/mod_vumeter.jsfx-inc</source>
       </version>
+      <version name="1.1.0" author="Floop-s" time="2026-07-02T04:49:42Z">
+        <changelog><![CDATA[+ Monitor: Support arbitrary multi-band selections (e.g., Low+High) via additive LR4 routing.
++ Fix: Add 1-pole lowpass smoothing to monitor gain to prevent audio clicks when toggling DIM.]]></changelog>
+        <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/effects/floop-master-control-mod/floop-master-control-mod.jsfx</source>
+        <source file="modules/mod_correlometer.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/effects/floop-master-control-mod/modules/mod_correlometer.jsfx-inc</source>
+        <source file="modules/mod_meter.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/effects/floop-master-control-mod/modules/mod_meter.jsfx-inc</source>
+        <source file="modules/mod_monitor.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/effects/floop-master-control-mod/modules/mod_monitor.jsfx-inc</source>
+        <source file="modules/mod_oscilloscope.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/effects/floop-master-control-mod/modules/mod_oscilloscope.jsfx-inc</source>
+        <source file="modules/mod_phase.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/effects/floop-master-control-mod/modules/mod_phase.jsfx-inc</source>
+        <source file="modules/mod_spectrogram.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/effects/floop-master-control-mod/modules/mod_spectrogram.jsfx-inc</source>
+        <source file="modules/mod_spectrum.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/effects/floop-master-control-mod/modules/mod_spectrum.jsfx-inc</source>
+        <source file="modules/mod_stereo.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/effects/floop-master-control-mod/modules/mod_stereo.jsfx-inc</source>
+        <source file="modules/mod_vumeter.jsfx-inc">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/effects/floop-master-control-mod/modules/mod_vumeter.jsfx-inc</source>
+      </version>
     </reapack>
   </category>
   <category name="effects/floop-multiband-transient-shaper">
@@ -144,6 +158,27 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
       </version>
     </reapack>
   </category>
+  <category name="scripts/floop-bill-the-pain-clock">
+    <reapack name="floop-bill-the-pain-clock.lua" type="script" desc="Floop Bill The Pain Clock">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Background time-tracking utility for REAPER designed for billing and project management.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Tracks time per-project seamlessly with a background daemon, even when the UI is closed. Splits work into distinct phases (Setup, Tracking, Editing, etc.) and chronological sessions. Features idle-detection (auto-pause), transport override, and detailed CSV exports.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Requires:\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab ReaImGui (ReaTeam Extensions repository)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab js_ReaScriptAPI (for CSV export dialog)\sa180\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Floop-s" time="2026-07-02T04:49:42Z">
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/scripts/floop-bill-the-pain-clock/floop-bill-the-pain-clock.lua</source>
+        <source file="floop-bill-the-pain-clock-daemon.lua">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/scripts/floop-bill-the-pain-clock/floop-bill-the-pain-clock-daemon.lua</source>
+      </version>
+    </reapack>
+  </category>
   <category name="scripts/floop-ess-hunter">
     <reapack name="floop-ess-hunter.lua" type="script" desc="Floop Ess Hunter: tame hiss and sibilance with envelopes.">
       <metadata>
@@ -152,7 +187,7 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
 \widowctrl\hyphauto
 
 {\pard \ql \f0 \sa180 \li0 \fi0 Floop Ess Hunter Taming hiss.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Detects and attenuates sibilance in vocal items by writing Volume envelope points. Features multi-band analysis, adaptive thresholds, and ZCR.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Detects and attenuates sibilance in vocal items by writing Volume envelope points. Features a fast zero-allocation HPF engine, adaptive thresholds, and ZCR.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Requires:\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab ReaImGui (ReaTeam Extensions repository), v0.10.2 or newer\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 For full documentation and changelog, please refer to the README file. Keywords: vocal, de-esser, envelope, processing, analysis\par}
@@ -179,6 +214,14 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
         <changelog><![CDATA[- Fixed cumulative volume reduction when sibilant segments overlap.
 - Fixed incorrect envelope point values by respecting track envelope scaling mode (Fader/Amplitude).]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/b7f4b93c1f1d3b3611a52136d3a4650721d36316/scripts/floop-ess-hunter/floop-ess-hunter.lua</source>
+      </version>
+      <version name="1.2.0" author="Floop-s" time="2026-07-02T04:49:42Z">
+        <changelog><![CDATA[- UI/UX: Custom toggles, simplified layout, and async analysis (no UI freeze).
+- Added Context-Aware Right-Click Reset for sliders.
+- Optimized Live Edit for real-time volume adjustments.
+- DSP: Switched to zero-allocation Butterworth HPF engine.
+- Fix: Corrected start_offs envelope alignment and edge segment dropping.]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/scripts/floop-ess-hunter/floop-ess-hunter.lua</source>
       </version>
     </reapack>
   </category>
@@ -220,6 +263,14 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
 + Bugfix: Fixed audio loop boundaries shifting when applying groove.
 + Bugfix: Added Bank deletion via context menu.]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/scripts/floop-groove-a-thor/floop-groove-a-thor.lua</source>
+      </version>
+      <version name="1.2.0" author="Floop-s" time="2026-07-02T04:49:42Z">
+        <changelog><![CDATA[+ Bugfix: Excluded muted notes from MIDI extraction.
++ Bugfix: Fixed MIDI note overlap truncation causing audio clicks.
++ Bugfix: Redesigned audio stretch marker clamp loop to prevent marker crossing.
++ Improved: Extracted grid type (straight/triplet) is now used as secondary priority in matching.
++ Improved: Fixed memory leak in GrooveCache by adding background GC for orphaned Takes.]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/95857bdb80be675f4fbe905f183f62fc61b99ffd/scripts/floop-groove-a-thor/floop-groove-a-thor.lua</source>
       </version>
     </reapack>
   </category>
