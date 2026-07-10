@@ -1,11 +1,11 @@
 -- Floop Scratchpad - Per-track notes system for REAPER.
 -- @description Floop Scratchpad: per-track notes system
--- @version 2.1.1
+-- @version 2.1.2
 -- @author Floop-s
 -- @license GPL-3.0
 -- @changelog
---   + V2.1.1
---   + Remembers last used text size when switching to tracks without saved state.
+--   + V2.1.2
+--   + Improved dynamic theme engine: fixes light theme bug on modern defaults and drastically reduces CPU usage.
 -- @about
 --   Per-track notes system for REAPER.
 --
@@ -72,132 +72,140 @@ local THEME_COLORS = {
     [reaper.ImGui_Col_ResizeGripActive()]  = 0xff7602FF,
 }
 
-local function GenerateDynamicTheme()
-    local bg_color = reaper.GetThemeColor("col_main_bg", 0)
-    local text_color = reaper.GetThemeColor("col_main_text", 0)
-    
-    if bg_color == -1 or text_color == -1 then
-        bg_color = reaper.GetThemeColor("3DTDBg", 0)
-        text_color = reaper.GetThemeColor("3DTDFG", 0)
-    end
+local Theme = {
+  colors = nil,
+  special = nil,
+  last_bg_native = -1,
+  _pushed_cols = 0,
+  _pushed_vars = 0
+}
 
-    local bg_r, bg_g, bg_b = reaper.ColorFromNative(bg_color)
-    local txt_r, txt_g, txt_b = reaper.ColorFromNative(text_color)
-    
-    local luminance = (0.299 * bg_r + 0.587 * bg_g + 0.114 * bg_b)
-    local is_dark = luminance < 128
-    
-    if bg_r == txt_r and bg_g == txt_g and bg_b == txt_b then
-        if is_dark then
-            txt_r, txt_g, txt_b = 255, 255, 255
-        else
-            txt_r, txt_g, txt_b = 0, 0, 0
-        end
-    end
-
-    local function rgba(r, g, b, a)
-        return (math.floor(r) << 24) | (math.floor(g) << 16) | (math.floor(b) << 8) | math.floor(a * 255)
-    end
-
-    local function mix(r1, g1, b1, r2, g2, b2, t)
-        return r1 + (r2 - r1) * t, g1 + (g2 - g1) * t, b1 + (b2 - b1) * t
-    end
-    
-    local function adjust_luma(r, g, b, amount)
-        local nr = r + (amount > 0 and (255 - r) or r) * amount
-        local ng = g + (amount > 0 and (255 - g) or g) * amount
-        local nb = b + (amount > 0 and (255 - b) or b) * amount
-        return math.max(0, math.min(255, nr)), math.max(0, math.min(255, ng)), math.max(0, math.min(255, nb))
-    end
-
-    local win_r, win_g, win_b = bg_r, bg_g, bg_b
-
-    local frame_r, frame_g, frame_b
-    local hover_r, hover_g, hover_b
-    local active_r, active_g, active_b
-    local child_r, child_g, child_b
-    local title_r, title_g, title_b
-
-    if is_dark then
-        frame_r, frame_g, frame_b = adjust_luma(bg_r, bg_g, bg_b, 0.12)
-        hover_r, hover_g, hover_b = adjust_luma(bg_r, bg_g, bg_b, 0.20)
-        active_r, active_g, active_b = adjust_luma(bg_r, bg_g, bg_b, 0.28)
-        child_r, child_g, child_b = adjust_luma(bg_r, bg_g, bg_b, -0.05)
-        title_r, title_g, title_b = adjust_luma(bg_r, bg_g, bg_b, 0.08)
-    else
-        frame_r, frame_g, frame_b = adjust_luma(bg_r, bg_g, bg_b, -0.15)
-        hover_r, hover_g, hover_b = adjust_luma(bg_r, bg_g, bg_b, -0.25)
-        active_r, active_g, active_b = adjust_luma(bg_r, bg_g, bg_b, -0.35)
-        child_r, child_g, child_b = adjust_luma(bg_r, bg_g, bg_b, -0.05)
-        title_r, title_g, title_b = adjust_luma(bg_r, bg_g, bg_b, -0.10)
-    end
-
-    local acc_r, acc_g, acc_b = 255, 118, 2
-
-    local colors = {
-        [reaper.ImGui_Col_WindowBg()]          = rgba(win_r, win_g, win_b, 1.0),
-        [reaper.ImGui_Col_ChildBg()]           = rgba(child_r, child_g, child_b, 0.8),
-        [reaper.ImGui_Col_PopupBg()]           = rgba(win_r, win_g, win_b, 0.95),
-        [reaper.ImGui_Col_Text()]              = rgba(txt_r, txt_g, txt_b, 1.0),
-        [reaper.ImGui_Col_TextDisabled()]      = rgba(txt_r, txt_g, txt_b, 0.5),
-        [reaper.ImGui_Col_TitleBg()]           = rgba(title_r, title_g, title_b, 1.0),
-        [reaper.ImGui_Col_TitleBgActive()]     = rgba(title_r, title_g, title_b, 1.0),
-        [reaper.ImGui_Col_TitleBgCollapsed()]  = rgba(title_r, title_g, title_b, 0.7),
-        [reaper.ImGui_Col_Button()]            = rgba(frame_r, frame_g, frame_b, 1.0),
-        [reaper.ImGui_Col_ButtonHovered()]     = rgba(hover_r, hover_g, hover_b, 1.0),
-        [reaper.ImGui_Col_ButtonActive()]      = rgba(active_r, active_g, active_b, 1.0),
-        [reaper.ImGui_Col_FrameBg()]           = rgba(frame_r, frame_g, frame_b, 1.0),
-        [reaper.ImGui_Col_FrameBgHovered()]    = rgba(hover_r, hover_g, hover_b, 1.0),
-        [reaper.ImGui_Col_FrameBgActive()]     = rgba(active_r, active_g, active_b, 1.0),
-        [reaper.ImGui_Col_SliderGrab()]        = rgba(acc_r, acc_g, acc_b, 0.8),
-        [reaper.ImGui_Col_SliderGrabActive()]  = rgba(acc_r, acc_g, acc_b, 1.0),
-        [reaper.ImGui_Col_Border()]            = rgba(txt_r, txt_g, txt_b, 0.15),
-        [reaper.ImGui_Col_Separator()]         = rgba(txt_r, txt_g, txt_b, 0.15),
-        [reaper.ImGui_Col_SeparatorHovered()]  = rgba(txt_r, txt_g, txt_b, 0.3),
-        [reaper.ImGui_Col_SeparatorActive()]   = rgba(txt_r, txt_g, txt_b, 0.4),
-        [reaper.ImGui_Col_Header()]            = rgba(frame_r, frame_g, frame_b, 1.0),
-        [reaper.ImGui_Col_HeaderHovered()]     = rgba(hover_r, hover_g, hover_b, 1.0),
-        [reaper.ImGui_Col_HeaderActive()]      = rgba(active_r, active_g, active_b, 1.0),
-        [reaper.ImGui_Col_ResizeGrip()]        = rgba(acc_r, acc_g, acc_b, 0.5),
-        [reaper.ImGui_Col_ResizeGripHovered()] = rgba(acc_r, acc_g, acc_b, 0.8),
-        [reaper.ImGui_Col_ResizeGripActive()]  = rgba(acc_r, acc_g, acc_b, 1.0),
-        [reaper.ImGui_Col_CheckMark()]         = rgba(acc_r, acc_g, acc_b, 1.0)
-    }
-
-    return colors
+local function rgba(r, g, b, a)
+  return (math.floor(r) << 24) | (math.floor(g) << 16) | (math.floor(b) << 8) | math.floor(a * 255)
 end
 
-local use_reaper_theme = false
+local function mix(r1, g1, b1, r2, g2, b2, t)
+  return r1 + (r2 - r1) * t, g1 + (g2 - g1) * t, b1 + (b2 - b1) * t
+end
+
+local function GenerateDynamicTheme()
+  local bg_native = reaper.GetThemeColor("col_main_bg2", 0)
+  local text_native = reaper.GetThemeColor("col_main_text2", 0)
+
+  if bg_native == -1 then bg_native = reaper.ColorToNative(27, 27, 27) end
+  if text_native == -1 then text_native = reaper.ColorToNative(232, 232, 232) end
+
+  local bg_r, bg_g, bg_b = reaper.ColorFromNative(bg_native)
+  local txt_r, txt_g, txt_b = reaper.ColorFromNative(text_native)
+
+  local luminance = (0.299 * bg_r + 0.587 * bg_g + 0.114 * bg_b)
+  local is_dark = luminance < 128
+
+  local txt_luminance = (0.299 * txt_r + 0.587 * txt_g + 0.114 * txt_b)
+  if is_dark and txt_luminance < 180 then
+    txt_r, txt_g, txt_b = 210, 212, 220
+  elseif (not is_dark) and txt_luminance > 80 then
+    txt_r, txt_g, txt_b = 40, 40, 40
+  end
+
+  local frame_r, frame_g, frame_b = mix(bg_r, bg_g, bg_b, txt_r, txt_g, txt_b, is_dark and 0.05 or 0.10)
+  local hover_r, hover_g, hover_b = mix(bg_r, bg_g, bg_b, txt_r, txt_g, txt_b, is_dark and 0.12 or 0.18)
+  local active_r, active_g, active_b = mix(bg_r, bg_g, bg_b, txt_r, txt_g, txt_b, is_dark and 0.18 or 0.25)
+  local title_r, title_g, title_b = mix(bg_r, bg_g, bg_b, 0, 0, 0, is_dark and 0.2 or 0.05)
+
+  -- Identità Floop Scratchpad: Forziamo l'arancione come colore accento
+  local acc_r, acc_g, acc_b = 255, 118, 2
+
+  local colors = {
+    [reaper.ImGui_Col_WindowBg()]             = rgba(bg_r, bg_g, bg_b, 1.0),
+    [reaper.ImGui_Col_ChildBg()]              = rgba(frame_r, frame_g, frame_b, 0.2),
+    [reaper.ImGui_Col_PopupBg()]              = rgba(bg_r, bg_g, bg_b, 0.95),
+    [reaper.ImGui_Col_Text()]                 = rgba(txt_r, txt_g, txt_b, 1.0),
+    [reaper.ImGui_Col_TextDisabled()]         = rgba(txt_r, txt_g, txt_b, 0.5),
+    [reaper.ImGui_Col_TitleBg()]              = rgba(title_r, title_g, title_b, 1.0),
+    [reaper.ImGui_Col_TitleBgActive()]        = rgba(title_r, title_g, title_b, 1.0),
+    [reaper.ImGui_Col_TitleBgCollapsed()]     = rgba(title_r, title_g, title_b, 0.7),
+    [reaper.ImGui_Col_Button()]               = rgba(frame_r, frame_g, frame_b, 1.0),
+    [reaper.ImGui_Col_ButtonHovered()]        = rgba(hover_r, hover_g, hover_b, 1.0),
+    [reaper.ImGui_Col_ButtonActive()]         = rgba(active_r, active_g, active_b, 1.0),
+    [reaper.ImGui_Col_FrameBg()]              = rgba(frame_r, frame_g, frame_b, 1.0),
+    [reaper.ImGui_Col_FrameBgHovered()]       = rgba(hover_r, hover_g, hover_b, 1.0),
+    [reaper.ImGui_Col_FrameBgActive()]        = rgba(active_r, active_g, active_b, 1.0),
+    [reaper.ImGui_Col_SliderGrab()]           = rgba(acc_r, acc_g, acc_b, 0.8),
+    [reaper.ImGui_Col_SliderGrabActive()]     = rgba(acc_r, acc_g, acc_b, 1.0),
+    [reaper.ImGui_Col_Border()]               = rgba(txt_r, txt_g, txt_b, 0.15),
+    [reaper.ImGui_Col_Separator()]            = rgba(txt_r, txt_g, txt_b, 0.15),
+    [reaper.ImGui_Col_SeparatorHovered()]     = rgba(txt_r, txt_g, txt_b, 0.3),
+    [reaper.ImGui_Col_SeparatorActive()]      = rgba(txt_r, txt_g, txt_b, 0.4),
+    [reaper.ImGui_Col_Header()]               = rgba(frame_r, frame_g, frame_b, 1.0),
+    [reaper.ImGui_Col_HeaderHovered()]        = rgba(hover_r, hover_g, hover_b, 1.0),
+    [reaper.ImGui_Col_HeaderActive()]         = rgba(active_r, active_g, active_b, 1.0),
+    [reaper.ImGui_Col_ResizeGrip()]           = rgba(acc_r, acc_g, acc_b, 0.5),
+    [reaper.ImGui_Col_ResizeGripHovered()]    = rgba(acc_r, acc_g, acc_b, 0.8),
+    [reaper.ImGui_Col_ResizeGripActive()]     = rgba(acc_r, acc_g, acc_b, 1.0),
+    [reaper.ImGui_Col_CheckMark()]            = rgba(acc_r, acc_g, acc_b, 1.0),
+  }
+
+  local special = {
+    accent = rgba(acc_r, acc_g, acc_b, 1.0),
+    accent_hover = rgba(math.min(255, acc_r + 20), math.min(255, acc_g + 20), math.min(255, acc_b + 20), 1.0),
+    accent_active = rgba(math.max(0, acc_r - 20), math.max(0, acc_g - 20), math.max(0, acc_b - 20), 1.0),
+    warn = rgba(239, 142, 39, 1.0),
+    error = rgba(255, 77, 79, 1.0),
+    ok = rgba(38, 226, 68, 1.0),
+    text_muted = rgba(txt_r, txt_g, txt_b, 0.6),
+    white = rgba(255, 255, 255, 1.0),
+  }
+
+  return colors, special, bg_native
+end
+
+function Theme.Init()
+  Theme.colors, Theme.special, Theme.last_bg_native = GenerateDynamicTheme()
+end
+
+function Theme.Tick()
+  local current_bg = reaper.GetThemeColor("col_main_bg2", 0)
+  if current_bg ~= Theme.last_bg_native then
+    Theme.Init()
+  end
+end
+
+local use_reaper_theme = true
 if reaper.HasExtState("FloopScratchpad", "use_reaper_theme") then
     use_reaper_theme = reaper.GetExtState("FloopScratchpad", "use_reaper_theme") == "1"
 end
 
-local function apply_theme()
-    reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_FrameRounding(), 6.0)
-    reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_WindowRounding(), 8.0)
-    reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_WindowPadding(), 16.0, 16.0)
-    reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_FramePadding(), 8.0, 6.0)
-    reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_ItemSpacing(), 8.0, 8.0)
-
-    if reaper.ImGui_StyleVar_GrabRounding then
-      reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_GrabRounding(), 6.0)
-    end
-
-    local color_count = 0
-    local target_colors = use_reaper_theme and GenerateDynamicTheme() or THEME_COLORS
-    for k, v in pairs(target_colors) do
-        reaper.ImGui_PushStyleColor(ctx, k, v)
-        color_count = color_count + 1
-    end
-
-    return color_count
+function Theme.Push(ctx, rounding)
+  rounding = rounding or 6.0
+  local count = 0
+  local target_colors = use_reaper_theme and Theme.colors or THEME_COLORS
+  for col, val in pairs(target_colors) do
+    reaper.ImGui_PushStyleColor(ctx, col, val)
+    count = count + 1
+  end
+  Theme._pushed_cols = count
+  reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_WindowRounding(), 8.0)
+  reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_FrameRounding(), rounding)
+  reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_WindowPadding(), 16.0, 16.0)
+  reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_FramePadding(), 8.0, 6.0)
+  reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_ItemSpacing(), 8.0, 8.0)
+  
+  Theme._pushed_vars = 5
+  if reaper.ImGui_StyleVar_GrabRounding then
+    reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_GrabRounding(), 6.0)
+    Theme._pushed_vars = 6
+  end
 end
 
-local function end_theme(color_count)
-    reaper.ImGui_PopStyleColor(ctx, color_count)
-    local to_pop = 5 + (reaper.ImGui_StyleVar_GrabRounding and 1 or 0)
-    reaper.ImGui_PopStyleVar(ctx, to_pop)
+function Theme.Pop(ctx)
+  if Theme._pushed_cols > 0 then reaper.ImGui_PopStyleColor(ctx, Theme._pushed_cols) end
+  if Theme._pushed_vars > 0 then reaper.ImGui_PopStyleVar(ctx, Theme._pushed_vars) end
+  Theme._pushed_cols = 0
+  Theme._pushed_vars = 0
 end
+
+Theme.Init()
 
 -- Helper functions for safe Color Packing (ARGB format required by ReaImGui ColorEdit)
 local function pack_argb(r, g, b, a)
@@ -531,7 +539,7 @@ local function createStaticJSFXFile()
   reaper.RecursiveCreateDirectory(effectsDir, 0)
   
   local jsfxContent = [[desc:Floop Note Reader
-// @version 2.1.1
+// @version 2.1.2
 // @author Floop-s
 // @about Static JSFX reader for Floop Scratchpad. Uses gmem to receive notes and @serialize for auto-persistence.
 
@@ -1443,7 +1451,8 @@ local function mainLoop()
   end
 
   reaper.ImGui_PushFont(ctx, sans_serif_font, 12)
-  local color_count = apply_theme()
+  Theme.Tick()
+  Theme.Push(ctx)
   
   if lastProjectPtr ~= nil and currentProject ~= lastProjectPtr then
      -- Handled above
@@ -1463,7 +1472,7 @@ local function mainLoop()
     reaper.ImGui_End(ctx)
   end
   
-  end_theme(color_count)
+  Theme.Pop(ctx)
   reaper.ImGui_PopFont(ctx)
   
   if open and not requestClose then
