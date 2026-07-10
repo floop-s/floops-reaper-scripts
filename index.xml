@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="9ad1515b3b0dd8b9701301665f7aa69de7555476">
+<index version="1" name="Floop's Reaper Scripts" commit="c5b45af47bb162495bd131fe2f9a4822e2b37cf3">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -408,6 +408,11 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
         <changelog><![CDATA[+ V2.1.1
 + Remembers last used text size when switching to tracks without saved state.]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-scratchpad/floop-scratchpad.lua</source>
+      </version>
+      <version name="2.1.2" author="Floop-s" time="2026-07-10T03:56:56Z">
+        <changelog><![CDATA[+ V2.1.2
++ Improved dynamic theme engine: fixes light theme bug on modern defaults and drastically reduces CPU usage.]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/c5b45af47bb162495bd131fe2f9a4822e2b37cf3/scripts/floop-scratchpad/floop-scratchpad.lua</source>
       </version>
     </reapack>
   </category>
