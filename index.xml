@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="c5b45af47bb162495bd131fe2f9a4822e2b37cf3">
+<index version="1" name="Floop's Reaper Scripts" commit="81de72036380ec5fc6e04028a303d958796fb558">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
       <metadata>
@@ -317,6 +317,21 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
         <source file="Floop Hunter Framework/modules/hunters/hunter_ess.lua">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-hunter-framework/modules/hunters/hunter_ess.lua</source>
         <source file="Floop Hunter Framework/modules/hunters/hunter_plosive.lua">https://github.com/floop-s/floops-reaper-scripts/raw/b375dae77b5a306f11a24320a796bf819a28569d/scripts/floop-hunter-framework/modules/hunters/hunter_plosive.lua</source>
       </version>
+      <version name="1.2.0" author="Floop-s" time="2026-07-19T18:48:53Z">
+        <changelog><![CDATA[+ Non-Destructive State Management: P_EXT memory allows multiple Hunters on the same item without destructive overwrites.
++ Continuous Filter Processing: JSFX HPF is always-on, eliminating zipper noise/phase clicks.
++ Geometric Envelope Anchoring: strictly anchored envelope boundaries to prevent legacy-point sloping.]]></changelog>
+        <source main="main" file="Floop Hunter Framework/floop-hunter-framework.lua">https://github.com/floop-s/floops-reaper-scripts/raw/81de72036380ec5fc6e04028a303d958796fb558/scripts/floop-hunter-framework/floop-hunter-framework.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_cache.lua">https://github.com/floop-s/floops-reaper-scripts/raw/81de72036380ec5fc6e04028a303d958796fb558/scripts/floop-hunter-framework/modules/floop_cache.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_dsp.lua">https://github.com/floop-s/floops-reaper-scripts/raw/81de72036380ec5fc6e04028a303d958796fb558/scripts/floop-hunter-framework/modules/floop_dsp.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_engine.lua">https://github.com/floop-s/floops-reaper-scripts/raw/81de72036380ec5fc6e04028a303d958796fb558/scripts/floop-hunter-framework/modules/floop_engine.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_imgui.lua">https://github.com/floop-s/floops-reaper-scripts/raw/81de72036380ec5fc6e04028a303d958796fb558/scripts/floop-hunter-framework/modules/floop_imgui.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_logger.lua">https://github.com/floop-s/floops-reaper-scripts/raw/81de72036380ec5fc6e04028a303d958796fb558/scripts/floop-hunter-framework/modules/floop_logger.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_ui.lua">https://github.com/floop-s/floops-reaper-scripts/raw/81de72036380ec5fc6e04028a303d958796fb558/scripts/floop-hunter-framework/modules/floop_ui.lua</source>
+        <source file="Floop Hunter Framework/modules/hunters/hunter_breath.lua">https://github.com/floop-s/floops-reaper-scripts/raw/81de72036380ec5fc6e04028a303d958796fb558/scripts/floop-hunter-framework/modules/hunters/hunter_breath.lua</source>
+        <source file="Floop Hunter Framework/modules/hunters/hunter_ess.lua">https://github.com/floop-s/floops-reaper-scripts/raw/81de72036380ec5fc6e04028a303d958796fb558/scripts/floop-hunter-framework/modules/hunters/hunter_ess.lua</source>
+        <source file="Floop Hunter Framework/modules/hunters/hunter_plosive.lua">https://github.com/floop-s/floops-reaper-scripts/raw/81de72036380ec5fc6e04028a303d958796fb558/scripts/floop-hunter-framework/modules/hunters/hunter_plosive.lua</source>
+      </version>
     </reapack>
   </category>
   <category name="scripts/floop-key-bpm-sniffer">
@@ -575,6 +590,11 @@ Animated floating UI with debounced search.]]></changelog>
         <changelog><![CDATA[- Added "Clean" function: removes empty MIDI/Audio items (< -50dB) and prunes unused lanes on Floopa tracks.]]></changelog>
         <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/2b418bb07d1a4370e07d4686df3c7a04dcbae304/scripts/floopa-station/floopa-station.lua</source>
         <source file="modules/midi-map.lua">https://github.com/floop-s/floops-reaper-scripts/raw/2b418bb07d1a4370e07d4686df3c7a04dcbae304/scripts/floopa-station/modules/midi-map.lua</source>
+      </version>
+      <version name="1.1.3" author="Floop-s" time="2026-07-19T18:48:32Z">
+        <changelog><![CDATA[- Fixed MCP track color synchronization bug.]]></changelog>
+        <source main="main">https://github.com/floop-s/floops-reaper-scripts/raw/acca37ac0545ff868702b406ba920b2a54afe30c/scripts/floopa-station/floopa-station.lua</source>
+        <source file="modules/midi-map.lua">https://github.com/floop-s/floops-reaper-scripts/raw/acca37ac0545ff868702b406ba920b2a54afe30c/scripts/floopa-station/modules/midi-map.lua</source>
       </version>
     </reapack>
   </category>
