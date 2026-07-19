@@ -15,11 +15,40 @@ local FEATURE_KEYS = {
   "ess_ratio", "ess_zcr", "high_db", "diff_db", "spectral_balance_db", "crest_low", "ma_low_db", "ma_high_db"
 }
 
+local function serialize(tbl)
+  if type(tbl) == "number" then return tostring(tbl)
+  elseif type(tbl) == "string" then return string.format("%q", tbl)
+  elseif type(tbl) == "boolean" then return tostring(tbl)
+  elseif type(tbl) == "table" then
+    local s = "{"
+    for k, v in pairs(tbl) do
+      if type(k) == "string" then
+        s = s .. string.format("[%q]=", k) .. serialize(v) .. ","
+      elseif type(k) == "number" then
+        s = s .. "[" .. k .. "]=" .. serialize(v) .. ","
+      end
+    end
+    return s .. "}"
+  end
+  return "nil"
+end
+
+local function deserialize(str)
+  if not str or str == "" then return {} end
+  local func = load("return " .. str, "deserialize", "t", {})
+  if func then
+    local ok, res = pcall(func)
+    if ok and type(res) == "table" then return res end
+  end
+  return {}
+end
+
+
 -- JSFX
 local JSFX_NAME = "Floop Hunter.jsfx"
 local JSFX_CONTENT = [[
 desc:Floop Hunter (Unified)
-version: 1.1.0
+version: 1.2.0
 author: Floop
 about: Unified artifact reduction. Slider 1 for Gain, Slider 2 for Plosive HPF.
 
@@ -56,30 +85,30 @@ update_hpf(20, 0.707);
 target_gain = 10 ^ (slider1 * db_scale);
 target_hpf_hz = slider2;
 
-@block
-// Smooth and update filter parameters per-block to save CPU, instead of per-sample
-current_hpf_hz = current_hpf_hz * 0.90 + target_hpf_hz * 0.10;
-current_hpf_hz > 21 ? (
+@sample
+// Smooth parameters per sample to avoid zipper noise during rapid envelopes
+current_gain = current_gain * smooth + target_gain * (1 - smooth);
+current_hpf_hz = current_hpf_hz * smooth + target_hpf_hz * (1 - smooth);
+
+// Update coefficients dynamically if the frequency has meaningfully changed
+abs(current_hpf_hz - last_hpf_hz) > 0.5 ? (
   update_hpf(current_hpf_hz, 0.707);
+  last_hpf_hz = current_hpf_hz;
 );
 
-@sample
-current_gain = current_gain * smooth + target_gain * (1 - smooth);
 spl0 *= current_gain;
 spl1 *= current_gain;
 
-// HPF Processing
-current_hpf_hz > 21 ? (
-  out0 = hpf_b0*spl0 + hpf_b1*hpf_x1 + hpf_b2*hpf_x2 - hpf_a1*hpf_y1 - hpf_a2*hpf_y2;
-  hpf_x2 = hpf_x1; hpf_x1 = spl0;
-  hpf_y2 = hpf_y1; hpf_y1 = out0;
-  spl0 = out0;
-  
-  out1 = hpf_b0*spl1 + hpf_b1*hpf_rx1 + hpf_b2*hpf_rx2 - hpf_a1*hpf_ry1 - hpf_a2*hpf_ry2;
-  hpf_rx2 = hpf_rx1; hpf_rx1 = spl1;
-  hpf_ry2 = hpf_ry1; hpf_ry1 = out1;
-  spl1 = out1;
-);
+// HPF Processing ALWAYS ON (even at 20Hz) to prevent phase-jump clicks
+out0 = hpf_b0*spl0 + hpf_b1*hpf_x1 + hpf_b2*hpf_x2 - hpf_a1*hpf_y1 - hpf_a2*hpf_y2;
+hpf_x2 = hpf_x1; hpf_x1 = spl0;
+hpf_y2 = hpf_y1; hpf_y1 = out0;
+spl0 = out0;
+
+out1 = hpf_b0*spl1 + hpf_b1*hpf_rx1 + hpf_b2*hpf_rx2 - hpf_a1*hpf_ry1 - hpf_a2*hpf_ry2;
+hpf_rx2 = hpf_rx1; hpf_rx1 = spl1;
+hpf_ry2 = hpf_ry1; hpf_ry1 = out1;
+spl1 = out1;
 ]]
 
 local function install_jsfx()
@@ -277,15 +306,15 @@ local function insert_hpf_curve(env, t_start, t_end, seg_points, pre_sec, post_s
   end
 
   if pts[1].t > t_start then
-    table.insert(pts, 1, { t = t_start, v = pts[1].v })
+    table.insert(pts, 1, { t = t_start, v = base })
   else
-    pts[1].t = t_start
+    pts[1].v = base
   end
 
   if pts[#pts].t < t_end then
-    pts[#pts + 1] = { t = t_end, v = pts[#pts].v }
+    pts[#pts + 1] = { t = t_end, v = base }
   else
-    pts[#pts].t = t_end
+    pts[#pts].v = base
   end
 
   local simplified = simplify_curve(pts, 0.75)
@@ -595,11 +624,26 @@ function Engine.apply_reduction(item, segments, config)
     if config.use_take_fx then
       local take = reaper.GetActiveTake(item)
       local play_rate = take and reaper.GetMediaItemTakeInfo_Value(take, "D_PLAYRATE") or 1.0
-      reaper.DeleteEnvelopePointRange(env_gain, 0, item_len * play_rate + 1.0)
-      reaper.DeleteEnvelopePointRange(env_hpf, 0, item_len * play_rate + 1.0)
+      local t_end_take = item_len * play_rate + 1.0
+      reaper.DeleteEnvelopePointRange(env_gain, 0, t_end_take)
+      reaper.DeleteEnvelopePointRange(env_hpf, 0, t_end_take)
+      
+      -- Anchor the take envelope to default values at the boundaries to prevent legacy points from skewing
+      reaper.InsertEnvelopePointEx(env_gain, -1, 0, 0.0, 0, 0, false, true)
+      reaper.InsertEnvelopePointEx(env_gain, -1, t_end_take, 0.0, 0, 0, false, true)
+      reaper.InsertEnvelopePointEx(env_hpf, -1, 0, 20.0, 0, 0, false, true)
+      reaper.InsertEnvelopePointEx(env_hpf, -1, t_end_take, 20.0, 0, 0, false, true)
     else
-      reaper.DeleteEnvelopePointRange(env_gain, math.max(0, item_pos - pre_sec), item_pos + item_len + post_sec)
-      reaper.DeleteEnvelopePointRange(env_hpf, math.max(0, item_pos - pre_sec), item_pos + item_len + post_sec)
+      local t_start_trk = math.max(0, item_pos - pre_sec)
+      local t_end_trk = item_pos + item_len + post_sec
+      reaper.DeleteEnvelopePointRange(env_gain, t_start_trk, t_end_trk)
+      reaper.DeleteEnvelopePointRange(env_hpf, t_start_trk, t_end_trk)
+      
+      -- Anchor the track envelope to default values at the item boundaries
+      reaper.InsertEnvelopePointEx(env_gain, -1, t_start_trk, 0.0, 0, 0, false, true)
+      reaper.InsertEnvelopePointEx(env_gain, -1, t_end_trk, 0.0, 0, 0, false, true)
+      reaper.InsertEnvelopePointEx(env_hpf, -1, t_start_trk, 20.0, 0, 0, false, true)
+      reaper.InsertEnvelopePointEx(env_hpf, -1, t_end_trk, 20.0, 0, 0, false, true)
     end
   end
 
@@ -715,7 +759,9 @@ function Engine.process_selection(hunter, config)
             end_time = t_end_real,
             points = seg.points,
             target_hz = seg.target_hz,
-            gain_db = seg.gain_db
+            gain_db = seg.gain_db,
+            reduction_db = seg.gain_db or seg.reduction_db or config.reduction_db or 6.0,
+            hunter_name = hunter and hunter.name or "Unknown"
           })
 
           if hunter then
@@ -726,7 +772,36 @@ function Engine.process_selection(hunter, config)
         end
       end
 
-      local num = Engine.apply_reduction(item, segments_time, config)
+      -- P_EXT State Management
+      local _, state_str = reaper.GetSetMediaItemInfo_String(item, "P_EXT:FLOOP_HUNTER_STATE", "", false)
+      local item_state = deserialize(state_str)
+      
+      if hunter then
+         item_state[hunter.name] = segments_time
+      end
+      
+      local new_state_str = serialize(item_state)
+      reaper.GetSetMediaItemInfo_String(item, "P_EXT:FLOOP_HUNTER_STATE", new_state_str, true)
+      
+      local gain_segs = {}
+      local hpf_segs = {}
+      for h_name, segs in pairs(item_state) do
+         for _, seg in ipairs(segs) do
+            if seg.points then 
+               table.insert(hpf_segs, seg)
+            else 
+               table.insert(gain_segs, seg)
+            end
+         end
+      end
+      
+      local resolved_gain = Engine.resolve_overlaps(gain_segs)
+      
+      local final_segments = {}
+      for _, seg in ipairs(resolved_gain) do table.insert(final_segments, seg) end
+      for _, seg in ipairs(hpf_segs) do table.insert(final_segments, seg) end
+
+      local num = Engine.apply_reduction(item, final_segments, config)
       total_segments = total_segments + num
     end
   end

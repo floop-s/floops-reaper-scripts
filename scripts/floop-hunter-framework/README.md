@@ -1,16 +1,16 @@
 # Floop Hunter Framework
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.1.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.2.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
-**Automatic vocal cleanup for REAPER ,detects and reduces sibilance, plosives, and breaths with precision volume automation.**
+**Automatic vocal cleanup for REAPER, detects and reduces sibilance, plosives, and breaths with precision volume automation.**
 
 ## Overview
 
-**Floop Hunter Framework** is an advanced, multi-module automation writer designed to automatically clean up vocal recordings. It listens to selected vocal tracks, detects artifacts (Sibilants, Plosives, and Breaths) using source-specific profiles, and writes precise volume automation to reduce them non-destructively.
+**Floop Hunter Framework** is an advanced, multi-module automation writer designed to automatically clean up vocal recordings. It analyzes the selected vocal tracks to selected vocal tracks, detects artifacts (Sibilants, Plosives, and Breaths) using source-specific profiles, and writes precise volume automation to reduce them non-destructively.
 
 By utilizing a unified JSFX plugin, it ensures that overlapping detections (e.g., a breath colliding with a plosive) are merged cleanly, preventing double-automation and keeping your envelope perfectly organized.
 
-This script is designed as a *workflow accelerator and an interactive editor*, not a magical 100% accurate one-click solution. Automated detection is never perfect. Its purpose is to rapidly find artifact candidates and provide you with a visual editor to quickly confirm, delete, or adjust the automation, saving you hours of tedious manual clicking and zooming. Treat the script's output as a highly advanced starting point. It does the heavy lifting, but your ears remain the final judge. Always review the automation before committing to a mix.
+This script is designed as a *workflow accelerator and an interactive editor*, not a magical 100% accurate one-click solution. Automated detection is never perfect. Its purpose is to rapidly find artifact candidates and provide you with a visual editor to quickly confirm, delete, or adjust the automation, reducing the amount of manual editing required. Treat the script's output as a highly advanced starting point. It does the heavy lifting, but your ears remain the final judge. Always review the automation before committing to a mix.
 
 
 
@@ -121,6 +121,11 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 
 
 ## Changelog
+
+### v1.2.0
+* **Non-Destructive State Management**: Introduced a robust `P_EXT` state memory system that allows applying multiple Hunters sequentially on the same clip without erasing previous automations. Overlapping Gain interventions (e.g., Ess + Breath) are intelligently resolved using a "strongest-wins" logic.
+* **Continuous Filter Processing**: Redesigned the JSFX High-Pass Filter for Plosives to be "Always-On", completely eliminating zipper noises and phase-jump clicks during rapid envelope changes.
+* **Geometric Envelope Anchoring**: Envelopes are now strictly anchored to their default values at the exact clip boundaries, preventing visual and mathematical "sloping" from legacy points outside the item.
 
 ### v1.1.0
 * **Major Overhaul**: Complete rewrite of the Plosive Hunter and Breath Hunter DSP engines for extreme accuracy.

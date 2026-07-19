@@ -1,14 +1,11 @@
 -- @description Floop Hunter Framework
--- @version 1.1.0
+-- @version 1.2.0
 -- @author Floop-s
 -- @license GPL-3.0
 -- @changelog
---   + Complete rewrite of Plosive Hunter and Breath Hunter DSP logic.
---   + Redefined Ess Hunter logic.
---   + Introduced Acoustic Profiles (Female, Male, Spoken, Rap) & Macro-Sliders.
---   + Upgraded JSFX and routing to completely decouple Plosives (HPF) from Ess/Breaths (Gain).
---   + Added Custom User Presets system.
---   + Major UI/UX layout optimizations.
+--   + Non-Destructive State Management: P_EXT memory allows multiple Hunters on the same item without destructive overwrites.
+--   + Continuous Filter Processing: JSFX HPF is always-on, eliminating zipper noise/phase clicks.
+--   + Geometric Envelope Anchoring: strictly anchored envelope boundaries to prevent legacy-point sloping.
 -- @about
 --   # Floop Hunter Framework
 --   Artifact detection and gain-reduction helper for REAPER (Ess / Plosive / Breath).
