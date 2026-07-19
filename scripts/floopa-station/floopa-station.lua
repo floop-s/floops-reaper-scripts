@@ -1,15 +1,15 @@
 -- Floopa Station
 -- @description Floopa Station: five-track live looping station.
--- @version 1.1.2
+-- @version 1.1.3
 -- @author Floop-s
 -- @license GPL-3.0
 -- @changelog
---   - Added "Clean" function: removes empty MIDI/Audio items (< -50dB) and prunes unused lanes on Floopa tracks.
+--   - Fixed MCP track color synchronization bug.
 -- @about
 --   Five-track live looping station for REAPER.
 --
 --   Designed for live performance with automated track setup,
---   smart auto-looping, and hands-free control.
+--   smart auto-looping, and hands-free control. 
 --
 --   Requires:
 --   - ReaImGui (ReaTeam Extensions repository), v0.10.2 or newer
@@ -2996,6 +2996,7 @@ local function selectTrack(trackIndex)
     end
     reaper.SetTrackColor(track, FLOOPA_TRACK_COLOR_SELECTED)
     reaper.UpdateArrange()
+    reaper.TrackList_AdjustWindows(false)
   else
     reaper.ShowMessageBox("Track not found.", "Error", 0)
   end
@@ -3301,7 +3302,10 @@ local function syncFloopaTrackColorsWithSelection()
             changed = true
         end
     end
-    if changed then reaper.UpdateArrange() end
+    if changed then
+        reaper.UpdateArrange()
+        reaper.TrackList_AdjustWindows(false)
+    end
 end
 
 -- Ensure defaults before recording: Add lanes when recording ON and fixed lanes present

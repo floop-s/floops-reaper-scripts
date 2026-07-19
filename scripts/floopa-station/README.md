@@ -1,6 +1,6 @@
 # Floopa Station - Live Looper Station
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.1.2-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.1.3-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 A live‑looping station for REAPER
 
@@ -127,6 +127,12 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 - **Internal Tests**: The `Tests` folder contains internal tests used during development. These are not required for the script to function and are not included in the standard distribution.
 
 ## Changelog
+
+### v1.1.3 (2026-07-19)
+- **Bugfix**: Fixed track selection color synchronization on REAPER's Mixer Control Panel (MCP) by forcing window list refresh after color updates.
+
+### v1.1.2 (2026-07-19)
+- Added "Clean" function: removes empty MIDI/Audio items (< -50dB) and prunes unused lanes on Floopa tracks.
 
 ### v1.1.1 (2026-01-18)
 - Auto-Loop length and recording position fixed (timeline-agnostic behavior).
