@@ -1,7 +1,7 @@
 # Floop Multiband Transient Shaper
 
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.0.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.1.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 
 
@@ -107,6 +107,13 @@ https://github.com/floop-s/floops-reaper-scripts/raw/main/index.xml
 ---
 
 ## Changelog
+
+### v1.1.0
+* Improved Attack/Sustain knob resolution with cubic mapping for finer control at low settings.
+* Fixed phase cancellation notch in Analog LR2 Crossover mode via Allpass delay compensation.
+* Improved Oversampling high-end response with steeper polyphase transition bands.
+* Corrected K-Weighting HP filter to 38Hz per ITU-R BS.1770 standard.
+* Fixed Output Gain and Wet/Dry staging order; fixed crossover mode state reset logic.
 
 ### v1.0.0
 * Initial Release.

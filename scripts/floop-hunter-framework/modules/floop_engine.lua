@@ -48,7 +48,7 @@ end
 local JSFX_NAME = "Floop Hunter.jsfx"
 local JSFX_CONTENT = [[
 desc:Floop Hunter (Unified)
-version: 1.2.0
+version: 1.2.1
 author: Floop
 about: Unified artifact reduction. Slider 1 for Gain, Slider 2 for Plosive HPF.
 

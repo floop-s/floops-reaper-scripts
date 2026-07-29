@@ -1,11 +1,9 @@
 -- @description Floop Hunter Framework
--- @version 1.2.0
+-- @version 1.2.1
 -- @author Floop-s
 -- @license GPL-3.0
 -- @changelog
---   + Non-Destructive State Management: P_EXT memory allows multiple Hunters on the same item without destructive overwrites.
---   + Continuous Filter Processing: JSFX HPF is always-on, eliminating zipper noise/phase clicks.
---   + Geometric Envelope Anchoring: strictly anchored envelope boundaries to prevent legacy-point sloping.
+--   + Fixed a critical bug where Live Edit would destructively wipe out other active Hunters' envelopes. Live Edit now properly utilizes the Unified Reduction engine.
 -- @about
 --   # Floop Hunter Framework
 --   Artifact detection and gain-reduction helper for REAPER (Ess / Plosive / Breath).

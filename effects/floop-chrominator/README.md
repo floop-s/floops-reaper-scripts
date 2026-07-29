@@ -1,5 +1,5 @@
 # Floop Chrominator
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-2..0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-2.1.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 **Stereo Analog Saturator for Reaper.**
 
@@ -67,11 +67,11 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 
 1.  Add **Floop Chrominator** to a track or bus.
 2.  Select a **Mode**:
-    *   **Soft**: Gentle knee and smooth response.
-    *   **Even**: Even-harmonic bias with rounding.
-    *   **Clip**: Controlled hard-clip with cubic compression.
-    *   **Warm**: Warm response with quadratic component.
-    *   **Odd**: Odd-harmonic emphasis with subtle low-frequency conditioning.
+    *   **Soft**: Smooth tape-style saturation.
+    *   **Even**: Asymmetric clipping, 2nd harmonic richness.
+    *   **Clip**: Gritty, slightly asymmetric clipping.
+    *   **Warm**: Tube-style massive even harmonics.
+    *   **Odd**: Aggressive, perfectly symmetric, pure odd harmonics.
 3.  Adjust **Core Controls**:
     *   **Drive**: Saturation amount (0–10).
     *   **Tone (Tilt)**: Balance lows/highs (-1 to +1).
@@ -84,11 +84,18 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 
 ## Troubleshooting
 
-*   **No loudness change with Auto-Gain**: Auto-Gain needs a signal to detect RMS. It estimates weighted RMS on inputs/outputs and applies smoothed correction.
+*   **No loudness change with Auto-Gain**: The Auto-Gain algorithm calculates compensation directly from the Drive and Punish settings. It applies a gentle curve to preserve low-end energy during heavy clipping, so extreme fuzz settings will still sound subjectively louder and denser.
 *   **Clicks when changing modes**: The script uses crossfades to prevent this, but extreme CPU load might cause dropouts.
 *   **High CPU usage**: "HQ" Oversampling is intensive; use standard oversampling or disable it for real-time monitoring if needed.
 
 ## Changelog
+
+### v2.1.0
+
+* **Restored V1 saturation tone** with strict mathematical bounds to prevent wavefolding noise.
+* **Fixed DC thump/pop** when engaging Punish via independent slew-rate limiting.
+* **Improved Auto-Gain** response under heavy clipping to preserve low-end bass energy.
+* **Removed obsolete HQ button** as Polyphase IIR handles all oversampling optimally.
 
 ### v2.0.0
 

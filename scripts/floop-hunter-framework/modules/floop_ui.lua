@@ -213,7 +213,11 @@ end
 
 local function apply_live_edit()
   if not UI.config.live_edit then return end
-  apply_active_hunter_only()
+  if type(apply_reduction) == "function" then
+    apply_reduction()
+  else
+    apply_active_hunter_only()
+  end
 end
 
 UI.apply_live_edit = apply_live_edit

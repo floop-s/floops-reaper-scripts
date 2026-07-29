@@ -1,9 +1,13 @@
 desc:Floop Multiband Transient Shaper 
-// @version 1.0.0
+// @version 1.1.0
 // @author Floop-s
 // @license GPL-3.0
 // @changelog 
-//   - Initial Release v1.0.0
+//   - Changed Attack/Sustain knob mapping to cubic for finer resolution
+//   - Fixed phase cancellation notch in LR2 Crossover via Allpass compensation
+//   - Improved Oversampling transition bands to preserve high-end response
+//   - Corrected K-Weighting HP filter to ITU-R BS.1770 standard (38Hz)
+//   - Fixed Wet/Dry mix gain staging and State Reset logic
 // @about
 //    3-Band Transient Shaper with Transparent Crossovers and up to 8x Oversampling.
 //    Features per-band Attack/Sustain, LUFS Auto-Gain, Lookahead Limiter, and Delta Monitoring.
@@ -157,7 +161,8 @@ loop(gfx_wave_size,
 
 // --- OVERSAMPLING INIT ---
 // Polyphase Allpass coefficients (Steep/Ultra)
-os_a1 = 0.161758; os_a2 = 0.733029; // Steep coefficients
+// Updated to steeper coefficients to fix high-end roll-off
+os_a1 = 0.079866; os_a2 = 0.390886;
 
 // State variables for OS
 function os_init() (
@@ -246,24 +251,18 @@ function scale_coef(c_base_44k, sr) (
 );
 
 function ts_update_coeffs(sr) instance(c_fast_att, c_fast_rel, c_slow_att, c_slow_rel, c_smooth) (
-  // Calculate coefficients
-  
-  // Fast Env
   c_fast_att = exp(-1 / (0.001 * sr)); 
   c_fast_rel = exp(-1 / (0.015 * sr));
   
-  // Slow Env
   c_slow_att = exp(-1 / (0.015 * sr));
   c_slow_rel = exp(-1 / (0.500 * sr));
   
-  // Gain smoothing
   c_smooth = exp(-1 / (0.001 * sr)); 
 );
 
 function ts_process(in, env_in, att_pct, sus_pct) instance(env_fast, env_slow, gain, c_fast_att, c_fast_rel, c_slow_att, c_slow_rel, c_smooth, current_gr, last_out) local(abs_in, diff, gain_mod, final_gain, target_gain) (
   abs_in = env_in;
   
-  // Envelope Follower
   env_fast = abs_in > env_fast ? 
              env_fast * c_fast_att + abs_in * (1-c_fast_att) : 
              env_fast * c_fast_rel + abs_in * (1-c_fast_rel);
@@ -274,31 +273,21 @@ function ts_process(in, env_in, att_pct, sus_pct) instance(env_fast, env_slow, g
              env_slow * c_slow_rel + abs_in * (1-c_slow_rel);
   env_slow += DENORM;
   
-  // Ratio calculation
   ratio = (env_fast + 0.000001) / (env_slow + 0.000001);
   
-  // Shaping Logic
   ratio > 1.0 ? (
-    // Attack Phase
     target_gain = 1.0 + (ratio - 1.0) * (att_pct * 0.08);
   ) : (
-    // Sustain Phase
     sus_pct > 0 ? (
-       // Boost Tail
        target_gain = 1.0 + (1.0 - ratio) * (sus_pct * 0.15); 
     ) : (
-       // Cut Tail
        target_gain = 1.0 + (ratio - 1.0) * (-sus_pct * 0.08);
     );
   );
   
-  // Clamp gain range
   target_gain = clamp(target_gain, 0.1, 10.0);
-  
-  // Smooth gain
   gain = gain * c_smooth + target_gain * (1 - c_smooth);
   
-  // Bypass if unity gain and neutral parameters
   (abs(gain - 1.0) < 0.000001 && abs(att_pct) < 0.1 && abs(sus_pct) < 0.1) ? (
      final_gain = 1.0;
      gain = 1.0;
@@ -354,10 +343,18 @@ local(band_l_low, band_l_midhigh, band_l_mid, band_l_high,
       xo1_r_lp_f1.svf_process(inR); band_r_low = xo1_r_lp_f1.lp;
       xo1_r_hp_f1.svf_process(inR); band_r_midhigh = xo1_r_hp_f1.hp;
 
-      xo2_l_lp_f1.svf_process(band_l_midhigh); band_l_mid = -xo2_l_lp_f1.lp; // Invert for LR2 Sum
+      xo2_l_lp_f1.svf_process(band_l_midhigh); band_l_mid = xo2_l_lp_f1.lp; 
       xo2_l_hp_f1.svf_process(band_l_midhigh); band_l_high = xo2_l_hp_f1.hp;
-      xo2_r_lp_f1.svf_process(band_r_midhigh); band_r_mid = -xo2_r_lp_f1.lp; // Invert for LR2 Sum
+      xo2_r_lp_f1.svf_process(band_r_midhigh); band_r_mid = xo2_r_lp_f1.lp; 
       xo2_r_hp_f1.svf_process(band_r_midhigh); band_r_high = xo2_r_hp_f1.hp;
+
+      // Phase compensation for Low Band (Allpass) to match Mid/High XO phase delay
+      xo2_l_ap_f1.svf_process(band_l_low); band_l_low = xo2_l_ap_f1.lp - xo2_l_ap_f1.hp;
+      xo2_r_ap_f1.svf_process(band_r_low); band_r_low = xo2_r_ap_f1.lp - xo2_r_ap_f1.hp;
+
+      // Invert Mid to match LR2 summing phase relations
+      band_l_mid = -band_l_mid;
+      band_r_mid = -band_r_mid;
 
       // Update secondary states
       xo1_l_lp_f2.svf_process(xo1_l_lp_f1.lp); xo1_l_hp_f2.svf_process(xo1_l_hp_f1.hp);
@@ -470,8 +467,8 @@ local(band_l_low, band_l_midhigh, band_l_mid, band_l_high,
   );
 
   // Apply Mix and Output Gain
-  sum_l = (sum_l * cur_out_gain) * cur_mix_wet + sum_l_dry * (1 - cur_mix_wet);
-  sum_r = (sum_r * cur_out_gain) * cur_mix_wet + sum_r_dry * (1 - cur_mix_wet);
+  sum_l = (sum_l * cur_mix_wet + sum_l_dry * (1 - cur_mix_wet)) * cur_out_gain;
+  sum_r = (sum_r * cur_mix_wet + sum_r_dry * (1 - cur_mix_wet)) * cur_out_gain;
 
   // Update GR History
   // gr_hist_buf[gr_hist_ptr] = ...
@@ -499,6 +496,7 @@ xo2_l_lp_f1.svf_init(); xo2_l_lp_f2.svf_init();
 xo2_l_hp_f1.svf_init(); xo2_l_hp_f2.svf_init(); 
 xo2_r_lp_f1.svf_init(); xo2_r_lp_f2.svf_init();
 xo2_r_hp_f1.svf_init(); xo2_r_hp_f2.svf_init();
+xo2_l_ap_f1.svf_init(); xo2_r_ap_f1.svf_init();
 
 ts_low_l.ts_init(); ts_low_r.ts_init();
 ts_mid_l.ts_init(); ts_mid_r.ts_init();
@@ -513,25 +511,17 @@ lufs_out_hp_l.svf_init(); lufs_out_hp_r.svf_init();
 
 // --- Filter Helpers ---
 function reset_xo_filters() (
-  xo1_l_lp_f1.svf_init(); xo1_l_lp_f1.d1 = DENORM; xo1_l_lp_f1.d2 = DENORM;
-  xo1_l_lp_f2.svf_init(); xo1_l_lp_f2.d1 = DENORM; xo1_l_lp_f2.d2 = DENORM; 
-  xo1_l_hp_f1.svf_init(); xo1_l_hp_f1.d1 = DENORM; xo1_l_hp_f1.d2 = DENORM; 
-  xo1_l_hp_f2.svf_init(); xo1_l_hp_f2.d1 = DENORM; xo1_l_hp_f2.d2 = DENORM; 
-  
-  xo1_r_lp_f1.svf_init(); xo1_r_lp_f1.d1 = DENORM; xo1_r_lp_f1.d2 = DENORM;
-  xo1_r_lp_f2.svf_init(); xo1_r_lp_f2.d1 = DENORM; xo1_r_lp_f2.d2 = DENORM;
-  xo1_r_hp_f1.svf_init(); xo1_r_hp_f1.d1 = DENORM; xo1_r_hp_f1.d2 = DENORM;
-  xo1_r_hp_f2.svf_init(); xo1_r_hp_f2.d1 = DENORM; xo1_r_hp_f2.d2 = DENORM;
+  xo1_l_lp_f1.svf_init(); xo1_l_lp_f2.svf_init(); 
+  xo1_l_hp_f1.svf_init(); xo1_l_hp_f2.svf_init(); 
+  xo1_r_lp_f1.svf_init(); xo1_r_lp_f2.svf_init();
+  xo1_r_hp_f1.svf_init(); xo1_r_hp_f2.svf_init();
 
-  xo2_l_lp_f1.svf_init(); xo2_l_lp_f1.d1 = DENORM; xo2_l_lp_f1.d2 = DENORM; 
-  xo2_l_lp_f2.svf_init(); xo2_l_lp_f2.d1 = DENORM; xo2_l_lp_f2.d2 = DENORM; 
-  xo2_l_hp_f1.svf_init(); xo2_l_hp_f1.d1 = DENORM; xo2_l_hp_f1.d2 = DENORM; 
-  xo2_l_hp_f2.svf_init(); xo2_l_hp_f2.d1 = DENORM; xo2_l_hp_f2.d2 = DENORM; 
+  xo2_l_lp_f1.svf_init(); xo2_l_lp_f2.svf_init(); 
+  xo2_l_hp_f1.svf_init(); xo2_l_hp_f2.svf_init(); 
+  xo2_r_lp_f1.svf_init(); xo2_r_lp_f2.svf_init();
+  xo2_r_hp_f1.svf_init(); xo2_r_hp_f2.svf_init();
   
-  xo2_r_lp_f1.svf_init(); xo2_r_lp_f1.d1 = DENORM; xo2_r_lp_f1.d2 = DENORM;
-  xo2_r_lp_f2.svf_init(); xo2_r_lp_f2.d1 = DENORM; xo2_r_lp_f2.d2 = DENORM;
-  xo2_r_hp_f1.svf_init(); xo2_r_hp_f1.d1 = DENORM; xo2_r_hp_f1.d2 = DENORM;
-  xo2_r_hp_f2.svf_init(); xo2_r_hp_f2.d1 = DENORM; xo2_r_hp_f2.d2 = DENORM;
+  xo2_l_ap_f1.svf_init(); xo2_r_ap_f1.svf_init();
 );
 
 function reset_dsp_state() (
@@ -559,15 +549,12 @@ function reset_dsp_state() (
 
   // LUFS
   lufs_in_hs_l.bq_init(); lufs_in_hs_r.bq_init();
-  lufs_in_hp_l.svf_init(); lufs_in_hp_l.d1 = DENORM; lufs_in_hp_l.d2 = DENORM;
-  lufs_in_hp_r.svf_init(); lufs_in_hp_r.d1 = DENORM; lufs_in_hp_r.d2 = DENORM;
+  lufs_in_hp_l.svf_init(); lufs_in_hp_r.svf_init();
   lufs_out_hs_l.bq_init(); lufs_out_hs_r.bq_init();
-  lufs_out_hp_l.svf_init(); lufs_out_hp_l.d1 = DENORM; lufs_out_hp_l.d2 = DENORM;
-  lufs_out_hp_r.svf_init(); lufs_out_hp_r.d1 = DENORM; lufs_out_hp_r.d2 = DENORM;
+  lufs_out_hp_l.svf_init(); lufs_out_hp_r.svf_init();
   
   // Sidechain HP Filters (Low Band Only)
-  sc_hp_l.svf_init(); sc_hp_l.d1 = DENORM; sc_hp_l.d2 = DENORM;
-  sc_hp_r.svf_init(); sc_hp_r.d1 = DENORM; sc_hp_r.d2 = DENORM;
+  sc_hp_l.svf_init(); sc_hp_r.svf_init();
 
   // Delta Buffer Crossfade
   delta_read_offset_target = 0;
@@ -701,10 +688,10 @@ function update_dsp() (
   lufs_out_hs_r.bq_set_hs_rbj(1500, 4.0, 0.707, srate);
   
   // Update LUFS Filters (Stage 2: High Pass)
-  lufs_in_hp_l.svf_set_freq(100, 0.707, srate); 
-  lufs_in_hp_r.svf_set_freq(100, 0.707, srate);
-  lufs_out_hp_l.svf_set_freq(100, 0.707, srate); 
-  lufs_out_hp_r.svf_set_freq(100, 0.707, srate);
+  lufs_in_hp_l.svf_set_freq(38, 0.707, srate); 
+  lufs_in_hp_r.svf_set_freq(38, 0.707, srate);
+  lufs_out_hp_l.svf_set_freq(38, 0.707, srate); 
+  lufs_out_hp_r.svf_set_freq(38, 0.707, srate);
   
   // Update Sidechain High Pass Filter
   sc_hp_l.svf_set_freq(100, 0.707, proc_sr);
@@ -719,16 +706,16 @@ function update_dsp() (
   
   // Calculate Target Parameters
   target_gain_low = bypass_low ? 1.0 : db2lin(drive_low);
-  target_att_low  = bypass_low ? 0.0 : att_low;
-  target_sus_low  = bypass_low ? 0.0 : sus_low;
+  target_att_low  = bypass_low ? 0.0 : (att_low < 0 ? -pow(-att_low/100, 3)*100 : pow(att_low/100, 3)*100);
+  target_sus_low  = bypass_low ? 0.0 : (sus_low < 0 ? -pow(-sus_low/100, 3)*100 : pow(sus_low/100, 3)*100);
   
   target_gain_mid = bypass_mid ? 1.0 : db2lin(drive_mid);
-  target_att_mid  = bypass_mid ? 0.0 : att_mid;
-  target_sus_mid  = bypass_mid ? 0.0 : sus_mid;
+  target_att_mid  = bypass_mid ? 0.0 : (att_mid < 0 ? -pow(-att_mid/100, 3)*100 : pow(att_mid/100, 3)*100);
+  target_sus_mid  = bypass_mid ? 0.0 : (sus_mid < 0 ? -pow(-sus_mid/100, 3)*100 : pow(sus_mid/100, 3)*100);
   
   target_gain_high = bypass_high ? 1.0 : db2lin(drive_high);
-  target_att_high  = bypass_high ? 0.0 : att_high;
-  target_sus_high  = bypass_high ? 0.0 : sus_high;
+  target_att_high  = bypass_high ? 0.0 : (att_high < 0 ? -pow(-att_high/100, 3)*100 : pow(att_high/100, 3)*100);
+  target_sus_high  = bypass_high ? 0.0 : (sus_high < 0 ? -pow(-sus_high/100, 3)*100 : pow(sus_high/100, 3)*100);
   
   target_sc_mix = sc_hp_on ? 1.0 : 0.0;
   
@@ -1223,6 +1210,7 @@ switch_state == 1 ? (
       // RE-CALCULATE DEPENDENCIES (Before State Update)
       prev_os_mode = os_mode;
       prev_slope_mode = slope_mode;
+      prev_xo_mode = xo_mode;
       
       // APPLY STATE CHANGES
       xo_mode = req_xo_mode;
@@ -1288,6 +1276,7 @@ switch_state == 1 ? (
       xo2_l_hp_f1.svf_set_freq(cur_xo2, Q, proc_sr); xo2_l_hp_f2.svf_set_freq(cur_xo2, Q, proc_sr);
       xo2_r_lp_f1.svf_set_freq(cur_xo2, Q, proc_sr); xo2_r_lp_f2.svf_set_freq(cur_xo2, Q, proc_sr);
       xo2_r_hp_f1.svf_set_freq(cur_xo2, Q, proc_sr); xo2_r_hp_f2.svf_set_freq(cur_xo2, Q, proc_sr);
+      xo2_l_ap_f1.svf_set_freq(cur_xo2, Q, proc_sr); xo2_r_ap_f1.svf_set_freq(cur_xo2, Q, proc_sr);
       
       sc_hp_l.svf_set_freq(100, 0.707, proc_sr);
       sc_hp_r.svf_set_freq(100, 0.707, proc_sr);
@@ -1338,6 +1327,7 @@ svf_upd_cnt >= 128 ? (
   xo2_l_hp_f1.svf_set_freq(cur_xo2, Q, proc_sr); xo2_l_hp_f2.svf_set_freq(cur_xo2, Q, proc_sr);
   xo2_r_lp_f1.svf_set_freq(cur_xo2, Q, proc_sr); xo2_r_lp_f2.svf_set_freq(cur_xo2, Q, proc_sr);
   xo2_r_hp_f1.svf_set_freq(cur_xo2, Q, proc_sr); xo2_r_hp_f2.svf_set_freq(cur_xo2, Q, proc_sr);
+  xo2_l_ap_f1.svf_set_freq(cur_xo2, Q, proc_sr); xo2_r_ap_f1.svf_set_freq(cur_xo2, Q, proc_sr);
 );
 
 // Store raw input

@@ -1,6 +1,6 @@
 # Floop Hunter Framework
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.2.0-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg) ![Version](https://img.shields.io/badge/Version-1.2.1-green) ![ReaPack](https://img.shields.io/badge/ReaPack-Install-blueviolet)
 
 **Automatic vocal cleanup for REAPER, detects and reduces sibilance, plosives, and breaths with precision volume automation.**
 
@@ -121,6 +121,9 @@ The easiest way to install and keep the script updated is via **ReaPack**.
 
 
 ## Changelog
+
+### v1.2.1
+* **Bug Fix**: Fixed a critical bug where Live Edit would destructively wipe out other active Hunters' envelopes. Live Edit now properly utilizes the Unified Reduction engine.
 
 ### v1.2.0
 * **Non-Destructive State Management**: Introduced a robust `P_EXT` state memory system that allows applying multiple Hunters sequentially on the same clip without erasing previous automations. Overlapping Gain interventions (e.g., Ess + Breath) are intelligently resolved using a "strongest-wins" logic.
