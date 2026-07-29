@@ -1,19 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Floop's Reaper Scripts" commit="81de72036380ec5fc6e04028a303d958796fb558">
+<index version="1" name="Floop's Reaper Scripts" commit="8e5f0a3baf4286c5f91007498b41ee7b245f6bac">
   <category name="effects/floop-chrominator">
     <reapack name="floop-chrominator.jsfx" type="effect" desc="Floop Chrominator (Stereo Analog Saturator)">
-      <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
-{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
-\widowctrl\hyphauto
-
-{\pard \ql \f0 \sa180 \li0 \fi0 Stereo analog saturator with five selectable modes: Soft, Even, Clip, Warm, and Odd.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Adds warmth, presence, and character from subtle color to heavier drive.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Features oversampling, filters, tilt EQ, auto-gain, and smooth transitions.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Keywords: saturation, analog, drive, distortion, stereo.\par}
-}
-]]></description>
-      </metadata>
       <version name="1.1.0" author="Floop-s" time="2026-01-12T13:21:00Z">
         <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/f6a71f83b4aecc9cb2c5defb80c67c85dcff896c/effects/floop-chrominator/floop-chrominator.jsfx</source>
       </version>
@@ -26,6 +14,13 @@
 # Fix: Mix default is now 100%
 # Fix: Perfect Unity Gain at 0 Drive (no volume drops)]]></changelog>
         <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/cf42ea727ee883fda043e06c35976ce0f8a6a134/effects/floop-chrominator/floop-chrominator.jsfx</source>
+      </version>
+      <version name="2.1.0" author="Floop-s" time="2026-07-29T05:50:15Z">
+        <changelog><![CDATA[+ Restored V1 saturation tone with new wavefolding protection
++ Fixed DC thump/pop when engaging Punish
++ Improved Auto-Gain response under heavy clipping
+- Removed obsolete HQ button]]></changelog>
+        <source>https://github.com/floop-s/floops-reaper-scripts/raw/8e5f0a3baf4286c5f91007498b41ee7b245f6bac/effects/floop-chrominator/floop-chrominator.jsfx</source>
       </version>
     </reapack>
   </category>
@@ -132,6 +127,14 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
       <version name="1.0.0" author="Floop-s" time="2026-02-15T17:18:44Z">
         <changelog><![CDATA[- Initial Release v1.0.0]]></changelog>
         <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/6d24fe5693b76b464825519c0199eba48585c8da/effects/floop-multiband-transient-shaper/floop-multiband-transient-shaper.jsfx</source>
+      </version>
+      <version name="1.1.0" author="Floop-s" time="2026-07-29T05:50:15Z">
+        <changelog><![CDATA[- Changed Attack/Sustain knob mapping to cubic for finer resolution
+- Fixed phase cancellation notch in LR2 Crossover via Allpass compensation
+- Improved Oversampling transition bands to preserve high-end response
+- Corrected K-Weighting HP filter to ITU-R BS.1770 standard (38Hz)
+- Fixed Wet/Dry mix gain staging and State Reset logic]]></changelog>
+        <source type="effect">https://github.com/floop-s/floops-reaper-scripts/raw/8e5f0a3baf4286c5f91007498b41ee7b245f6bac/effects/floop-multiband-transient-shaper/floop-multiband-transient-shaper.jsfx</source>
       </version>
     </reapack>
   </category>
@@ -331,6 +334,19 @@ GFX: Re-engineered Goniometer rendering for true lossless visualization of every
         <source file="Floop Hunter Framework/modules/hunters/hunter_breath.lua">https://github.com/floop-s/floops-reaper-scripts/raw/81de72036380ec5fc6e04028a303d958796fb558/scripts/floop-hunter-framework/modules/hunters/hunter_breath.lua</source>
         <source file="Floop Hunter Framework/modules/hunters/hunter_ess.lua">https://github.com/floop-s/floops-reaper-scripts/raw/81de72036380ec5fc6e04028a303d958796fb558/scripts/floop-hunter-framework/modules/hunters/hunter_ess.lua</source>
         <source file="Floop Hunter Framework/modules/hunters/hunter_plosive.lua">https://github.com/floop-s/floops-reaper-scripts/raw/81de72036380ec5fc6e04028a303d958796fb558/scripts/floop-hunter-framework/modules/hunters/hunter_plosive.lua</source>
+      </version>
+      <version name="1.2.1" author="Floop-s" time="2026-07-29T05:50:15Z">
+        <changelog><![CDATA[+ Fixed a critical bug where Live Edit would destructively wipe out other active Hunters' envelopes. Live Edit now properly utilizes the Unified Reduction engine.]]></changelog>
+        <source main="main" file="Floop Hunter Framework/floop-hunter-framework.lua">https://github.com/floop-s/floops-reaper-scripts/raw/8e5f0a3baf4286c5f91007498b41ee7b245f6bac/scripts/floop-hunter-framework/floop-hunter-framework.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_cache.lua">https://github.com/floop-s/floops-reaper-scripts/raw/8e5f0a3baf4286c5f91007498b41ee7b245f6bac/scripts/floop-hunter-framework/modules/floop_cache.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_dsp.lua">https://github.com/floop-s/floops-reaper-scripts/raw/8e5f0a3baf4286c5f91007498b41ee7b245f6bac/scripts/floop-hunter-framework/modules/floop_dsp.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_engine.lua">https://github.com/floop-s/floops-reaper-scripts/raw/8e5f0a3baf4286c5f91007498b41ee7b245f6bac/scripts/floop-hunter-framework/modules/floop_engine.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_imgui.lua">https://github.com/floop-s/floops-reaper-scripts/raw/8e5f0a3baf4286c5f91007498b41ee7b245f6bac/scripts/floop-hunter-framework/modules/floop_imgui.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_logger.lua">https://github.com/floop-s/floops-reaper-scripts/raw/8e5f0a3baf4286c5f91007498b41ee7b245f6bac/scripts/floop-hunter-framework/modules/floop_logger.lua</source>
+        <source file="Floop Hunter Framework/modules/floop_ui.lua">https://github.com/floop-s/floops-reaper-scripts/raw/8e5f0a3baf4286c5f91007498b41ee7b245f6bac/scripts/floop-hunter-framework/modules/floop_ui.lua</source>
+        <source file="Floop Hunter Framework/modules/hunters/hunter_breath.lua">https://github.com/floop-s/floops-reaper-scripts/raw/8e5f0a3baf4286c5f91007498b41ee7b245f6bac/scripts/floop-hunter-framework/modules/hunters/hunter_breath.lua</source>
+        <source file="Floop Hunter Framework/modules/hunters/hunter_ess.lua">https://github.com/floop-s/floops-reaper-scripts/raw/8e5f0a3baf4286c5f91007498b41ee7b245f6bac/scripts/floop-hunter-framework/modules/hunters/hunter_ess.lua</source>
+        <source file="Floop Hunter Framework/modules/hunters/hunter_plosive.lua">https://github.com/floop-s/floops-reaper-scripts/raw/8e5f0a3baf4286c5f91007498b41ee7b245f6bac/scripts/floop-hunter-framework/modules/hunters/hunter_plosive.lua</source>
       </version>
     </reapack>
   </category>
