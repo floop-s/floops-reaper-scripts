@@ -619,64 +619,254 @@ Animated floating UI with debounced search.]]></changelog>
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
 \widowctrl\hyphauto
 
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Floop\u8217's REAPER Scripts\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 This repository contains JSFX effects and Lua scripts for REAPER.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 The tools focus on workflow enhancement, audio processing, and music production utilities.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 All content is released as open-source software under the GPLv3 license.\par}
-{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Repository Structure\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 scripts/} - Lua scripts\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 effects/} - JSFX effects\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Each tool is contained in its own folder and includes:\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab source file ({\f1 .lua} or {\f1 .jsfx})\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab dedicated README with usage details\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 The repository can be used via ReaPack or manual installation.\par}
-{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Installation\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 ReaPack (recommended)\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 1.\tx360\tab Open REAPER\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 2.\tx360\tab Go to Extensions \u8594 ? ReaPack \u8594 ? Import Repositories\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 3.\tx360\tab Add:\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \f1 https://github.com/floop-s/floops-reaper-scripts/raw/main/index.xml\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 4.\tx360\tab Install tools from ReaPack browser\sa180\par}
-{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Manual installation\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 1.\tx360\tab Download or clone the repository\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 2.\tx360\tab Open REAPER \u8594 ? Options \u8594 ? Show REAPER resource path\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 3.\tx360\tab Copy files into:\sa180\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 .lua} \u8594 ? Scripts/\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 .jsfx} \u8594 ? Effects/\sa180\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 4.\tx360\tab Refresh REAPER (Actions List for scripts, F5 for JSFX)\sa180\par}
-{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Featured Tools\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Workflow & Editing\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Scratchpad - notes attached to tracks\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Sheet Reader - PDFs and images inside REAPER\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Search - track navigation and filtering\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Studio Trainer - instrument practice with adaptive BPM\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop ESS Hunter / Hunter Framework - detection and marking system for sibilance, plosives, and breath events for dialogue editing\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Music Tools\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Groove-A-Thor - groove extraction, transfer, and generation\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floopa Station - live looping tool\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Audio Processing\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Chrominator - stereo saturation\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Floop Master Control (Modular) - modular metering and analysis system\sa180\par}
-{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Compatibility\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Primary platform: Windows (tested)\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab macOS / Linux: partially supported, not fully tested\sa180\par}
-{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Support\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 The project is maintained in spare time.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Tools are provided as-is. Feedback is welcome but not guaranteed to be addressed.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 If useful, support is appreciated:\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 {\field{\*\fldinst{HYPERLINK "https://ko-fi.com/floopsreaperscripts"}}{\fldrslt{\ul
-{\cf1 [image: https://img.shields.io/badge/Ko--fi-Support%20Development-orange?style=flat-square&logo=ko-fi]\cf0}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Floop's REAPER Scripts\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\b Free, open-source Lua scripts and JSFX plugins for REAPER}\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Modular master metering \u183 ? vocal cleanup (de-esser, de-plosive, breath remover) \u183 ? groove extraction \u183 ? live looping \u183 ? track notes \u183 ? saturation \u183 ? compression \u183 ? transient shaping\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\field{\*\fldinst{HYPERLINK "https://floratarantino.com/floop-reaper-scripts"}}{\fldrslt{\ul
+{\cf1 [image: https://img.shields.io/badge/Website-floop--reaper--scripts-0a7cff?style=for-the-badge&logo=googlechrome&logoColor=white]\cf0}
+}}}
+ {\field{\*\fldinst{HYPERLINK "#installation"}}{\fldrslt{\ul
+{\cf1 [image: https://img.shields.io/badge/Install-ReaPack-7b42bc?style=for-the-badge]\cf0}
 }}}
 \par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\field{\*\fldinst{HYPERLINK "https://github.com/floop-s/floops-reaper-scripts/stargazers"}}{\fldrslt{\ul
+{\cf1 [image: https://img.shields.io/github/stars/floop-s/floops-reaper-scripts?style=flat-square&logo=github]\cf0}
+}}}
+ {\field{\*\fldinst{HYPERLINK "https://github.com/floop-s/floops-reaper-scripts/commits/main"}}{\fldrslt{\ul
+{\cf1 [image: https://img.shields.io/github/last-commit/floop-s/floops-reaper-scripts?style=flat-square]\cf0}
+}}}
+ {\field{\*\fldinst{HYPERLINK "https://github.com/floop-s/floops-reaper-scripts/releases"}}{\fldrslt{\ul
+{\cf1 [image: https://img.shields.io/github/downloads/floop-s/floops-reaper-scripts/total?style=flat-square&label=release%20downloads]\cf0}
+}}}
+ {\field{\*\fldinst{HYPERLINK "LICENSE"}}{\fldrslt{\ul
+{\cf1 [image: https://img.shields.io/badge/License-GPLv3-blue?style=flat-square]\cf0}
+}}}
+ {\cf1 [image: https://img.shields.io/badge/REAPER-Lua%20%7C%20JSFX-555?style=flat-square]\cf0} {\cf1 [image: https://img.shields.io/badge/Windows-tested-success?style=flat-square&logo=windows]\cf0} {\field{\*\fldinst{HYPERLINK "https://ko-fi.com/floopsreaperscripts"}}{\fldrslt{\ul
+{\cf1 [image: https://img.shields.io/badge/Ko--fi-Support-ff5e5b?style=flat-square&logo=ko-fi&logoColor=white]\cf0}
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li720 \fi0 {\b Install everything in 30 seconds with ReaPack} \u8212- add this URL in {\i Extensions \u8594 ? ReaPack \u8594 ? Import repositories}:\par}
+{\pard \ql \f0 \sa180 \li720 \fi0 \f1 https://github.com/floop-s/floops-reaper-scripts/raw/main/index.xml\par}
+{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 \u11088 ? Featured: Floop Master Control (Modular)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\b One JSFX, up to 9 slots, any combination of analysis modules} \u8212- peak/LUFS meter, VU, spectrum, spectrogram, phase scope, correlation, stereo field, oscilloscope and monitoring. Swap modules per slot without stacking multiple FX instances. No dependencies: drop it on your master and go.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\b {\field{\*\fldinst{HYPERLINK "effects/floop-master-control-mod"}}{\fldrslt{\ul
+\u8594 ? Full documentation
+}}}
+}\par}
+{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Contents\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\field{\*\fldinst{HYPERLINK "#vocal--dialogue-editing"}}{\fldrslt{\ul
+Vocal & dialogue editing
+}}}
+\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\field{\*\fldinst{HYPERLINK "#workflow--productivity"}}{\fldrslt{\ul
+Workflow & productivity
+}}}
+\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\field{\*\fldinst{HYPERLINK "#music--performance"}}{\fldrslt{\ul
+Music & performance
+}}}
+\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\field{\*\fldinst{HYPERLINK "#audio-effects-jsfx"}}{\fldrslt{\ul
+Audio effects (JSFX)
+}}}
+\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\field{\*\fldinst{HYPERLINK "#installation"}}{\fldrslt{\ul
+Installation
+}}}
+\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\field{\*\fldinst{HYPERLINK "#feedback--bug-reports"}}{\fldrslt{\ul
+Feedback & bug reports
+}}}
+\sa180\par}
+{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 At a glance\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 | Tool | Type | What it does | Requires | |---|---|---|---| | {\field{\*\fldinst{HYPERLINK "scripts/floop-hunter-framework"}}{\fldrslt{\ul
+Hunter Framework
+}}}
+ | Lua | Detects sibilance, plosives and breaths, writes volume automation | ReaImGui, SWS | | {\field{\*\fldinst{HYPERLINK "scripts/floop-ess-hunter"}}{\fldrslt{\ul
+Ess Hunter
+}}}
+ | Lua | Automatic de-essing via volume automation | ReaImGui, SWS | | {\field{\*\fldinst{HYPERLINK "scripts/floop-scratchpad"}}{\fldrslt{\ul
+Scratchpad
+}}}
+ | Lua | Notes per track, saved inside the project | ReaImGui 0.10.2+ | | {\field{\*\fldinst{HYPERLINK "scripts/floop-search"}}{\fldrslt{\ul
+Search
+}}}
+ | Lua | Keyboard-first track search and navigation | ReaImGui 0.10.2+, SWS | | {\field{\*\fldinst{HYPERLINK "scripts/floop-sheet-reader"}}{\fldrslt{\ul
+Sheet Reader
+}}}
+ | Lua | View PDFs and images inside REAPER | ReaImGui, SWS \u183 ? {\b Windows only} | | {\field{\*\fldinst{HYPERLINK "scripts/floop-bill-the-pain-clock"}}{\fldrslt{\ul
+Bill The Pain Clock
+}}}
+ | Lua | Background time tracking per project, for billing | ReaImGui 0.10.2+ | | {\field{\*\fldinst{HYPERLINK "scripts/floop-key-bpm-sniffer"}}{\fldrslt{\ul
+Key & BPM Sniffer
+}}}
+ | Lua | Detects key and tempo of audio items | ReaImGui | | {\field{\*\fldinst{HYPERLINK "scripts/floop-useless-time-based-effects-calculator"}}{\fldrslt{\ul
+Time-Based FX Calculator
+}}}
+ | Lua | Delay / reverb / release times from BPM | ReaImGui 0.10.2+ | | {\field{\*\fldinst{HYPERLINK "scripts/floop-groove-a-thor"}}{\fldrslt{\ul
+Groove-A-Thor
+}}}
+ | Lua | Extract, generate and apply groove (audio \u8596 ? MIDI) | ReaImGui | | {\field{\*\fldinst{HYPERLINK "scripts/floopa-station"}}{\fldrslt{\ul
+Floopa Station
+}}}
+ | Lua | 5-track live looper with count-in and auto-loop | ReaImGui 0.10.2+, SWS | | {\field{\*\fldinst{HYPERLINK "scripts/floop-studio-trainer"}}{\fldrslt{\ul
+Studio Trainer
+}}}
+ | Lua | Practice loops with automatic BPM increase | ReaImGui 0.10.2+ | | {\field{\*\fldinst{HYPERLINK "effects/floop-chrominator"}}{\fldrslt{\ul
+Chrominator
+}}}
+ | JSFX | Stereo analog-style saturator, 5 modes | \u8212- | | {\field{\*\fldinst{HYPERLINK "effects/floop-multiband-transient-shaper"}}{\fldrslt{\ul
+Multiband Transient Shaper
+}}}
+ | JSFX | 3-band attack/sustain, up to 8\u215 ? oversampling | \u8212- | | {\field{\*\fldinst{HYPERLINK "effects/floop-vert-ish"}}{\fldrslt{\ul
+Vert-ish VCA Compressor
+}}}
+ | JSFX | VCA bus compressor with L/R controls | \u8212- | | {\field{\*\fldinst{HYPERLINK "effects/floop-master-control-mod"}}{\fldrslt{\ul
+Master Control (Modular)
+}}}
+ | JSFX | Slot-based metering: LUFS, spectrum, phase, scope\u8230 ? | \u8212- | | {\field{\*\fldinst{HYPERLINK "effects/floop-master-control"}}{\fldrslt{\ul
+Master Control
+}}}
+ | JSFX | All-in-one master metering and true peak | \u8212- |\par}
+{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Vocal & dialogue editing\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "scripts/floop-hunter-framework"}}{\fldrslt{\ul
+Floop Hunter Framework
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Automatic vocal cleanup: finds {\b sibilance, plosives and breaths} and writes precise volume automation only where needed no plugin, no tone change, fully editable afterwards. Overlapping detections are merged cleanly.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "scripts/floop-ess-hunter"}}{\fldrslt{\ul
+Floop Ess Hunter
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The standalone de-esser version of the Hunter: detects "s", "sh", "ch" and lowers them with envelope points.\par}
+{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Workflow & productivity\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "scripts/floop-scratchpad"}}{\fldrslt{\ul
+Floop Scratchpad
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Write notes per track, stored inside the {\f1 .rpp} file. Optional embedded display in the TCP / mixer.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "scripts/floop-search"}}{\fldrslt{\ul
+Floop Search
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A floating search bar to find, select and preview any track by name or number, without the mouse.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "scripts/floop-sheet-reader"}}{\fldrslt{\ul
+Floop Sheet Reader
+}}}
+ \u183 ? {\i Windows only}\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Open PDFs and images (sheet music, lyrics, notes) in a dockable REAPER window.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "scripts/floop-bill-the-pain-clock"}}{\fldrslt{\ul
+Floop Bill The Pain Clock
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Tracks the time spent on each project in the background, with idle detection \u8212- made for billing clients.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "scripts/floop-key-bpm-sniffer"}}{\fldrslt{\ul
+Floop Key & BPM Sniffer
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Detects musical key and tempo of selected audio items.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "scripts/floop-useless-time-based-effects-calculator"}}{\fldrslt{\ul
+Floop Time-Based Effects Calculator
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Delay times, reverb pre-delay/decay and compressor release synced to project BPM.\par}
+{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Music & performance\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "scripts/floop-groove-a-thor"}}{\fldrslt{\ul
+Floop Groove-A-Thor
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Extract timing and velocity feel from audio or MIDI, apply it elsewhere, or generate new grooves.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "scripts/floopa-station"}}{\fldrslt{\ul
+Floopa Station
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Live looper with 5 dedicated tracks, count-in, beat counter, auto-loop and micro-fades.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "scripts/floop-studio-trainer"}}{\fldrslt{\ul
+Floop Studio Trainer
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Loop a section or the metronome; the BPM rises automatically after each set of repetitions.\par}
+{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Audio effects (JSFX)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "effects/floop-chrominator"}}{\fldrslt{\ul
+Floop Chrominator
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Stereo analog-style saturation with five modes (Soft, Even, Clip, Warm, Odd).\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "effects/floop-multiband-transient-shaper"}}{\fldrslt{\ul
+Floop Multiband Transient Shaper
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Independent attack, sustain and gain on three bands, up to 8\u215 ? oversampling.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "effects/floop-vert-ish"}}{\fldrslt{\ul
+Vert-ish VCA Compressor
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 VCA-style compressor for bus glue and drums, dual-mono or linked, with saturation and oversampling.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "effects/floop-master-control-mod"}}{\fldrslt{\ul
+Floop Master Control (Modular)
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Up to 9 slots, each hosting a module: meter, VU, spectrum, spectrogram, phase, correlation, stereo, oscilloscope, monitor.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 {\field{\*\fldinst{HYPERLINK "effects/floop-master-control"}}{\fldrslt{\ul
+Floop Master Control
+}}}
+\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The original all-in-one version: true peak, LUFS, spectrum and phase in one plugin.\par}
+{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Installation\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 ReaPack (recommended \u8212- includes automatic updates)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 1.\tx360\tab Install {\field{\*\fldinst{HYPERLINK "https://reapack.com"}}{\fldrslt{\ul
+ReaPack
+}}}
+ if you don't have it.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 2.\tx360\tab {\i Extensions \u8594 ? ReaPack \u8594 ? Import repositories\u8230 ?} and paste:\par}
+{\pard \ql \f0 \sa180 \li360 \fi0 \f1 https://github.com/floop-s/floops-reaper-scripts/raw/main/index.xml\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 3.\tx360\tab {\i Extensions \u8594 ? ReaPack \u8594 ? Browse packages}, search {\b floop}, install what you need.\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Most scripts need {\b ReaImGui} (install {\i "ReaScript binding for Dear ImGui"} from ReaPack) and some need the {\field{\*\fldinst{HYPERLINK "https://www.sws-extension.org"}}{\fldrslt{\ul
+SWS Extension
+}}}
+. See the table above.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Manual / single download\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Every tool also has a downloadable {\b {\field{\*\fldinst{HYPERLINK "https://github.com/floop-s/floops-reaper-scripts/releases"}}{\fldrslt{\ul
+Release
+}}}
+}.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 1.\tx360\tab {\i Options \u8594 ? Show REAPER resource path}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 2.\tx360\tab Copy {\f1 .lua} files into {\f1 Scripts/}, {\f1 .jsfx} files into {\f1 Effects/}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 3.\tx360\tab Load scripts from the Actions list; press F5 in the FX browser for JSFX.\sa180\par}
+{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Compatibility\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Windows}: primary platform, fully tested.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b macOS / Linux}: most tools should work (pure Lua + ReaImGui / JSFX) but are not fully tested. Reports are very welcome.\sa180\par}
+{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Feedback & bug reports\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 ReaPack doesn't tell me who uses what \u8212- {\b your feedback is the only signal I get.}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab \u55357 ?\u56347 ? Found a bug? {\field{\*\fldinst{HYPERLINK "https://github.com/floop-s/floops-reaper-scripts/issues/new"}}{\fldrslt{\ul
+Open an issue
+}}}
+ \u8212- include REAPER version, OS and tool version.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab \u55357 ?\u56481 ? Idea or question? Use {\field{\*\fldinst{HYPERLINK "https://github.com/floop-s/floops-reaper-scripts/discussions"}}{\fldrslt{\ul
+Discussions
+}}}
+.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab \u11088 ? If a tool saves you time, a {\b star} on this repo helps other REAPER users find it.\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The project is maintained in my spare time. If you'd like to support it: {\field{\*\fldinst{HYPERLINK "https://ko-fi.com/floopsreaperscripts"}}{\fldrslt{\ul
+Ko-fi
+}}}
+.\par}
 {\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 License\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 GPLv3 - see LICENSE file for details.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 GPLv3 \u8212- see {\field{\*\fldinst{HYPERLINK "LICENSE"}}{\fldrslt{\ul
+LICENSE
+}}}
+.\par}
 }
 ]]></description>
     <link rel="website">https://www.floratarantino.com/floop-reaper-scripts/</link>
